@@ -111,9 +111,7 @@ public class QuadrantView extends StackPane {
         rotateTransition.play();
     }
 
-    /**
-     * עדכון מצב תא בלוח
-     */
+    // עדכון מצב תא בלוח
     public void updateCell(int row, int col, int state) {
         Circle circle = cellCircles[row][col];
 
@@ -130,30 +128,8 @@ public class QuadrantView extends StackPane {
         }
     }
 
-    /**
-     * סימון תא כמהלך אחרון - שונה כך שלא יוסיף סימון
-     */
-    public void highlightCell(int row, int col) {
-        // פונקציה ריקה - לא מדגישה יותר את המהלך האחרון
-    }
 
-    /**
-     * סימון רביע כזה שסובב לאחרונה
-     */
-    public void highlightQuadrant() {
-        // לא עושה כלום - לא מדגישה יותר את הרביע
-    }
-
-    /**
-     * ניקוי הדגשה של רביע
-     */
-    public void clearHighlight() {
-        setStyle("-fx-background-color: #DDDDDD; -fx-border-color: #333333; -fx-border-width: 1px;");
-    }
-
-    /**
-     * מעבר בין שלבי המשחק
-     */
+    // מעבר בין שלבי המשחק
     public void setGamePhase(GamePhase phase) {
         this.currentPhase = phase;
     }
@@ -175,13 +151,4 @@ public class QuadrantView extends StackPane {
         return this.quadrantIndex;
     }
 
-    /**
-     * המרת צבע למחרוזת הקס
-     */
-    private String toHexString(Color color) {
-        return String.format("#%02X%02X%02X",
-                (int) (color.getRed() * 255),
-                (int) (color.getGreen() * 255),
-                (int) (color.getBlue() * 255));
-    }
 }

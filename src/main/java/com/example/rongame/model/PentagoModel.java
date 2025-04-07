@@ -31,9 +31,7 @@ public class PentagoModel extends Observable {
         gameState = GameState.IN_PROGRESS;
     }
 
-    /**
-     * ביצוע מהלך - הנחת כלי משחק במיקום מסוים
-     */
+    // ביצוע מהלך - הנחת כלי משחק במיקום מסוים
     public boolean makeMove(int row, int col) {
         int position = row * 6 + col;
 
@@ -52,9 +50,7 @@ public class PentagoModel extends Observable {
         return true;
     }
 
-    /**
-     * סיבוב רביע בלוח
-     */
+    // סיבוב רביע
     public void rotateQuadrant(int quadrant, boolean clockwise) {
         board.rotateQuadrant(quadrant, clockwise);
         lastRotatedQuadrant = quadrant;
@@ -72,9 +68,7 @@ public class PentagoModel extends Observable {
         notifyObservers("BOARD_UPDATED");
     }
 
-    /**
-     * בדיקת מצב המשחק (ניצחון או תיקו)
-     */
+    //  בדיקת מצב המשחק (ניצחון או תיקו)
     private void checkGameState() {
         if (board.hasWinningLine(0)) {
             gameState = GameState.BLACK_WINS;
@@ -110,9 +104,7 @@ public class PentagoModel extends Observable {
         return lastRotationClockwise;
     }
 
-    /**
-     * איפוס המשחק
-     */
+    // לאפס את המשחק
     public void resetGame() {
         board = new BitBoardRepresentation();
         currentPlayer = 0;

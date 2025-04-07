@@ -35,7 +35,7 @@ public class PentagoView extends BorderPane {
     }
 
     private void createUI() {
-        // אזור העליון למידע
+        // האזור העליון למידע
         VBox topBox = new VBox(10);
         topBox.setPadding(new Insets(20, 0, 20, 0));
         topBox.setAlignment(Pos.CENTER);
@@ -139,9 +139,7 @@ public class PentagoView extends BorderPane {
         setPadding(new Insets(20));
     }
 
-    /**
-     * עדכון הוראות למשתמש
-     */
+    // עדכון הוראות המשחק
     public void updateInstructions() {
         if (currentPhase == GamePhase.PLACE_PIECE) {
             instructionLabel.setText("Player " + (boardView.getCurrentPlayer() == 0 ? "Black" : "Red") + ", place a piece");
@@ -152,32 +150,24 @@ public class PentagoView extends BorderPane {
         }
     }
 
-    /**
-     * עדכון סטטוס המשחק
-     */
+    // עדכון סטטוס המשחק
     public void updateGameStatus(String status) {
         statusLabel.setText(status);
     }
 
-    /**
-     * החלפת שלב המשחק (הנחת כלי או סיבוב רביע)
-     */
+    // החלפת שלב המשחק (הנחת כלי או סיבוב רביע)
     public void setGamePhase(GamePhase phase) {
         currentPhase = phase;
         boardView.setGamePhase(phase);
         updateInstructions();
     }
 
-    /**
-     * עדכון מצב הלוח
-     */
+    // עדכון מצב הלוח
     public void updateBoard(int[][] board) {
         boardView.updateBoard(board);
     }
 
-    /**
-     * עדכון השחקן הנוכחי
-     */
+    // עדכון השחקן הנוכחי
     public void setCurrentPlayer(int player) {
         boardView.setCurrentPlayer(player);
         updateInstructions();

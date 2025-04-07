@@ -79,9 +79,8 @@ public class BoardView extends StackPane {
         Platform.runLater(this::layoutButtons);
     }
 
-    /**
-     * יצירת כפתורי סיבוב מסביב לתתי-הלוחות
-     */
+
+    // יצירת כפתורי הסיבוב
     private void createRotationButtons() {
         rotationButtons = new Button[8]; // 8 כפתורי סיבוב - 2 לכל תת-לוח
 
@@ -123,21 +122,16 @@ public class BoardView extends StackPane {
 
         // הסתרת הכפתורים בתחילת המשחק
         updateRotationButtonsVisibility();
-
-        // מאזין לשינוי גודל - לא נדרש כאן כי אנחנו משתמשים בגדלים קבועים
-        // widthProperty().addListener((obs, oldVal, newVal) -> layoutButtons());
-        // heightProperty().addListener((obs, oldVal, newVal) -> layoutButtons());
     }
 
-    /**
-     * עדכון מיקום הכפתורים בהתאם לגודל החלון
-     */
+
+    //  עדכון מיקום הכפתורים בהתאם לגודל החלון
     private void layoutButtons() {
         // חישוב גודל של כל תת-לוח
         final double quadrantWidth = (BOARD_TOTAL_WIDTH - 2 * BOARD_MARGIN - QUADRANT_GAP) / 2;
         final double quadrantHeight = (BOARD_TOTAL_HEIGHT - 2 * BOARD_MARGIN - QUADRANT_GAP) / 2;
 
-        // חישוב מיקום הלוח האפור בתוך מיכל הלוח (הניחו שהוא ממורכז)
+        // חישוב מיקום הלוח האפור בתוך מיכל הלוח
         double boardX = (getWidth() - BOARD_TOTAL_WIDTH) / 2;
         double boardY = (getHeight() - BOARD_TOTAL_HEIGHT) / 2;
 
@@ -159,7 +153,7 @@ public class BoardView extends StackPane {
                 {boardX + BOARD_MARGIN + quadrantWidth + QUADRANT_GAP, boardY + BOARD_MARGIN + quadrantHeight + QUADRANT_GAP}
         };
 
-        // תאם את מיקום הכפתורים
+        // מתאם את מיקום הכפתורים
         if (rotationButtons[0] != null) { // וידוא שהכפתורים קיימים
             for (int i = 0; i < 4; i++) {
                 double qLeft = quadrantPositions[i][0];
@@ -268,8 +262,6 @@ public class BoardView extends StackPane {
                         quadrants[quadIndex].getQuadrantRotationListener().onQuadrantRotation(quadIndex, isClockwise);
                     }
 
-                    // אין צורך להחזיר את הכפתורים לנראות כי שלב המשחק משתנה
-                    // והפונקציה updateRotationButtonsVisibility כבר תטפל בזה
                 });
             }
         });
@@ -277,9 +269,7 @@ public class BoardView extends StackPane {
         return button;
     }
 
-    /**
-     * עדכון נראות כפתורי הסיבוב בהתאם לשלב המשחק
-     */
+    // עדכון נראות כפתורי הסיבוב בהתאם לשלב המשחק
     private void updateRotationButtonsVisibility() {
         boolean shouldShowButtons = currentPhase == GamePhase.ROTATE_QUADRANT;
 
@@ -289,9 +279,7 @@ public class BoardView extends StackPane {
         }
     }
 
-    /**
-     * עדכון מצב הלוח
-     */
+    // עדכון מצב הלוח
     public void updateBoard(int[][] boardState) {
         for (int r = 0; r < 6; r++) {
             for (int c = 0; c < 6; c++) {
@@ -304,9 +292,7 @@ public class BoardView extends StackPane {
         }
     }
 
-    /**
-     * הגדרת שלב המשחק (הנחה או סיבוב)
-     */
+    // הגדרת שלב המשחק (הנחה או סיבוב)
     public void setGamePhase(GamePhase phase) {
         this.currentPhase = phase;
         for (QuadrantView quadrant : quadrants) {
@@ -315,50 +301,27 @@ public class BoardView extends StackPane {
         updateRotationButtonsVisibility();
     }
 
-    /**
-     * הגדרת השחקן הנוכחי
-     */
+    //  הגדרת השחקן הנוכחי
     public void setCurrentPlayer(int player) {
         this.currentPlayer = player;
     }
 
-    /**
-     * הגדרת מאזיני אירועים לכל תאי הלוח
-     */
+    // הגדרת מאזיני אירועים לכל תאי הלוח
     public void setCellClickListener(CellClickListener listener) {
         for (QuadrantView quadrant : quadrants) {
             quadrant.setCellClickListener(listener);
         }
     }
 
-    /**
-     * הגדרת מאזיני אירועים לסיבוב רביע בלוח
-     */
+    //  הגדרת מאזיני אירועים לסיבוב רביע בלוח
     public void setQuadrantRotationListener(QuadrantRotationListener listener) {
         for (QuadrantView quadrant : quadrants) {
             quadrant.setQuadrantRotationListener(listener);
         }
     }
 
-    /**
-     * סימון המהלך האחרון
-     */
-    public void highlightLastMove(int row, int col) {
-        int quadrantIndex = (row / 3) * 2 + (col / 3);
-        int localRow = row % 3;
-        int localCol = col % 3;
 
-        quadrants[quadrantIndex].highlightCell(localRow, localCol);
-    }
-
-    /**
-     * סימון הרביע האחרון שסובב (מיושן - לא בשימוש)
-     */
-    public void highlightLastRotatedQuadrant(int quadrant) {
-        // פונקציה ריקה - לא מדגישה יותר את הרביע האחרון שסובב
-    }
-
-    // Getters
+    // פעולות GET
     public int getCurrentPlayer() {
         return currentPlayer;
     }
@@ -367,16 +330,12 @@ public class BoardView extends StackPane {
         return currentPhase;
     }
 
-    /**
-     * ממשק למאזין לחיצה על תא בלוח
-     */
+    // ממשק למאזין לחיצה על תא בלוח
     public interface CellClickListener {
         void onCellClick(int quadrant, int row, int col);
     }
 
-    /**
-     * ממשק למאזין לסיבוב רביע בלוח
-     */
+    //  ממשק למאזין לסיבוב רביע בלוח
     public interface QuadrantRotationListener {
         void onQuadrantRotation(int quadrant, boolean clockwise);
     }

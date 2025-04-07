@@ -1,7 +1,7 @@
 package com.example.rongame.model;
 
 public class BitBoardRepresentation {
-    // הלוח מיוצג כשני מספרים ארוכים - אחד לכל שחקן
+    // הצגת הלוח כשני מספרים ארוכים - אחד לכל שחקן
     // כל ביט מייצג משבצת בלוח 6x6
     private long blackBoard;
     private long whiteBoard;
@@ -15,17 +15,14 @@ public class BitBoardRepresentation {
         whiteBoard = 0L;
     }
 
-    /**
-     * בדיקה האם המיקום פנוי
-     */
+
+    // בדיקה האם המיקום פנוי
     public boolean isPositionEmpty(int position) {
         long mask = 1L << position;
         return ((blackBoard | whiteBoard) & mask) == 0;
     }
 
-    /**
-     * הנחת כלי משחק במיקום מסוים
-     */
+    //  הנחת כלי משחק במיקום מסוים
     public void placePiece(int position, int player) {
         long mask = 1L << position;
         if (player == 0) {
@@ -35,9 +32,7 @@ public class BitBoardRepresentation {
         }
     }
 
-    /**
-     * קבלת המצב של משבצת מסוימת (ריק, שחור, לבן)
-     */
+    // קבלת המצב של משבצת מסוימת (ריק, שחור, לבן)
     public int getPieceAt(int row, int col) {
         int position = row * BOARD_SIZE + col;
         long mask = 1L << position;
@@ -102,9 +97,7 @@ public class BitBoardRepresentation {
         }
     }
 
-    /**
-     * בדיקה האם קיים רצף מנצח
-     */
+    //  בדיקה האם קיים רצף מנצח
     public boolean hasWinningLine(int player) {
         long board = (player == 0) ? blackBoard : whiteBoard;
 
@@ -171,9 +164,7 @@ public class BitBoardRepresentation {
         return false;
     }
 
-    /**
-     * בדיקה האם הלוח מלא
-     */
+    // בדיקה אם הלוח מלא
     public boolean isBoardFull() {
         return (~(blackBoard | whiteBoard) & ((1L << 36) - 1)) == 0;
     }
