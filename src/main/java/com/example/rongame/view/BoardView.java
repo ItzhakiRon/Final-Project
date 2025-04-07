@@ -208,9 +208,7 @@ public class BoardView extends StackPane {
         }
     }
 
-    /**
-     * יצירת כפתור חץ לסיבוב
-     */
+    //  יצירת כפתור חץ לסיבוב
     private Button createArrowButton(String arrowSymbol, int quadrantIndex, boolean clockwise) {
         Button button = new Button(arrowSymbol);
         button.setPrefSize(40, 40);
@@ -270,8 +268,10 @@ public class BoardView extends StackPane {
     }
 
     // עדכון נראות כפתורי הסיבוב בהתאם לשלב המשחק
+    //  חשוב: במצב AI, כשזה תור המחשב כפתורי הסיבוב לא יוצגו
     private void updateRotationButtonsVisibility() {
-        boolean shouldShowButtons = currentPhase == GamePhase.ROTATE_QUADRANT;
+        boolean shouldShowButtons = currentPhase == GamePhase.ROTATE_QUADRANT
+                && !isAIRotating;
 
         // הצגה או הסתרה של כל הכפתורים
         for (Button button : rotationButtons) {
@@ -339,4 +339,36 @@ public class BoardView extends StackPane {
     public interface QuadrantRotationListener {
         void onQuadrantRotation(int quadrant, boolean clockwise);
     }
+
+    // מסתיר את כפתורי הסיבוב
+    public void hideRotationButtons() {
+        // הסתרת כל כפתורי הסיבוב
+        for (Button button : rotationButtons) {
+            button.setVisible(false);
+        }
+    }
+
+    /**
+     * הפעלת אנימציית סיבוב ללא שימוש בכפתורים
+     * @param quadrant הרביע לסיבוב
+     * @param clockwise האם לסובב עם כיוון השעון
+     * @param onComplete פעולת סיום לביצוע בסוף האנימציה
+     */
+    public void animateRotationWithoutButtons(int quadrant, boolean clockwise, Runnable onComplete) {
+        // מבטיחים שכפתורי הסיבוב נשארים מוסתרים
+        hideRotationButtons();
+
+        // הפעלת אנימציית הסיבוב על הרביע המתאים
+        quadrants[quadrant].animateRotation(clockwise, onComplete);
+    }
+
+    // הוספת שדה בוליאני חדש לשמירת מצב ה-AI
+    private boolean isAIRotating = false;
+
+    //הגדרת מצב סיבוב של AI
+    public void setAIRotating(boolean isAIRotating) {
+        this.isAIRotating = isAIRotating;
+        updateRotationButtonsVisibility();
+    }
+
 }

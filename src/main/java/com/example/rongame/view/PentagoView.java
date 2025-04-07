@@ -17,12 +17,20 @@ public class PentagoView extends BorderPane {
     private Label statusLabel;
     private Label instructionLabel;
     private Button newGameButton;
+    private Button backToMenuButton;
 
     // מצב המשחק (PLACE_PIECE, ROTATE_QUADRANT, GAME_OVER)
     private GamePhase currentPhase;
 
+    // סוג המשחק (נגד שחקן או נגד מחשב)
+    private GameMode gameMode = GameMode.HUMAN;
+
     public enum GamePhase {
         PLACE_PIECE, ROTATE_QUADRANT, GAME_OVER
+    }
+
+    public enum GameMode {
+        HUMAN, AI
     }
 
     public PentagoView() {
@@ -88,13 +96,32 @@ public class PentagoView extends BorderPane {
         setCenter(centerVBox);
 
         // אזור תחתון
-        HBox bottomBox = new HBox(10);
+        HBox bottomBox = new HBox(20); // מרווח גדול יותר בין הכפתורים
         bottomBox.setPadding(new Insets(20, 0, 20, 0));
         bottomBox.setAlignment(Pos.CENTER);
 
-        newGameButton = new Button("New Game");
-        newGameButton.setStyle(
-                "-fx-background-color: #3498db; " +
+        // יצירת כפתור משחק חדש
+        newGameButton = createStyledButton("New Game", "#3498db");
+
+        // יצירת כפתור חזרה לתפריט
+        backToMenuButton = createStyledButton("Back to Menu", "#e74c3c");
+
+        bottomBox.getChildren().addAll(newGameButton, backToMenuButton);
+        setBottom(bottomBox);
+
+        // הגדרת מסגרת עם padding של 20px מסביב
+        setPadding(new Insets(20));
+    }
+
+    /**
+     * יצירת כפתור מעוצב עם צבע מותאם
+     */
+    private Button createStyledButton(String text, String color) {
+        Button button = new Button(text);
+
+        // עיצוב כפתור
+        button.setStyle(
+                "-fx-background-color: " + color + "; " +
                         "-fx-text-fill: white; " +
                         "-fx-padding: 10px 20px; " +
                         "-fx-font-size: 14px; " +
@@ -104,10 +131,12 @@ public class PentagoView extends BorderPane {
                         "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 2, 0, 0, 1);"
         );
 
-        // הוספת אפקט מעבר עכבר באמצעות מאזין אירועים
-        newGameButton.setOnMouseEntered(e ->
-                newGameButton.setStyle(
-                        "-fx-background-color: #2980b9; " +
+        // הוספת אפקט מעבר עכבר
+        String darkerColor = getDarkerColor(color);
+
+        button.setOnMouseEntered(e ->
+                button.setStyle(
+                        "-fx-background-color: " + darkerColor + "; " +
                                 "-fx-text-fill: white; " +
                                 "-fx-padding: 10px 20px; " +
                                 "-fx-font-size: 14px; " +
@@ -119,9 +148,9 @@ public class PentagoView extends BorderPane {
                 )
         );
 
-        newGameButton.setOnMouseExited(e ->
-                newGameButton.setStyle(
-                        "-fx-background-color: #3498db; " +
+        button.setOnMouseExited(e ->
+                button.setStyle(
+                        "-fx-background-color: " + color + "; " +
                                 "-fx-text-fill: white; " +
                                 "-fx-padding: 10px 20px; " +
                                 "-fx-font-size: 14px; " +
@@ -132,19 +161,25 @@ public class PentagoView extends BorderPane {
                 )
         );
 
-        bottomBox.getChildren().add(newGameButton);
-        setBottom(bottomBox);
+        return button;
+    }
 
-        // הגדרת מסגרת עם padding של 20px מסביב
-        setPadding(new Insets(20));
+    // אפקט מעבר עכבר לצבע כהה יותר
+    private String getDarkerColor(String hexColor) {
+        if (hexColor.equals("#3498db")) return "#2980b9";
+        if (hexColor.equals("#e74c3c")) return "#c0392b";
+        return hexColor; // מקרה ברירת מחדל
     }
 
     // עדכון הוראות המשחק
     public void updateInstructions() {
+        String playerName = (gameMode == GameMode.AI && boardView.getCurrentPlayer() == 1) ? "Computer" :
+                ((boardView.getCurrentPlayer() == 0) ? "Black" : "Red");
+
         if (currentPhase == GamePhase.PLACE_PIECE) {
-            instructionLabel.setText("Player " + (boardView.getCurrentPlayer() == 0 ? "Black" : "Red") + ", place a piece");
+            instructionLabel.setText("Player " + playerName + ", place a piece");
         } else if (currentPhase == GamePhase.ROTATE_QUADRANT) {
-            instructionLabel.setText("Player " + (boardView.getCurrentPlayer() == 0 ? "Black" : "Red") + ", rotate a quadrant");
+            instructionLabel.setText("Player " + playerName + ", rotate a quadrant");
         } else if (currentPhase == GamePhase.GAME_OVER) {
             instructionLabel.setText("Game Over! Press 'New Game' to restart");
         }
@@ -173,6 +208,12 @@ public class PentagoView extends BorderPane {
         updateInstructions();
     }
 
+    // הגדרת מצב המשחק (נגד אדם או נגד מחשב)
+    public void setGameMode(GameMode mode) {
+        this.gameMode = mode;
+        updateInstructions();
+    }
+
     // מגדירי גישה
     public BoardView getBoardView() {
         return boardView;
@@ -182,7 +223,15 @@ public class PentagoView extends BorderPane {
         return newGameButton;
     }
 
+    public Button getBackToMenuButton() {
+        return backToMenuButton;
+    }
+
     public GamePhase getCurrentPhase() {
         return currentPhase;
+    }
+
+    public GameMode getGameMode() {
+        return gameMode;
     }
 }

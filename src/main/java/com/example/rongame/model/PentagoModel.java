@@ -92,17 +92,6 @@ public class PentagoModel extends Observable {
         return gameState;
     }
 
-    public int getLastMove() {
-        return lastMove;
-    }
-
-    public int getLastRotatedQuadrant() {
-        return lastRotatedQuadrant;
-    }
-
-    public boolean wasLastRotationClockwise() {
-        return lastRotationClockwise;
-    }
 
     // לאפס את המשחק
     public void resetGame() {

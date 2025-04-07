@@ -27,7 +27,6 @@ public class QuadrantView extends StackPane {
     private static final Color EMPTY_COLOR = Color.LIGHTGRAY;
     private static final Color BLACK_COLOR = Color.BLACK;
     private static final Color RED_COLOR = Color.RED;
-    private static final Color QUADRANT_HIGHLIGHT_COLOR = Color.LIGHTGREEN;
 
     // הגדרות אנימציה
     private static final double ROTATION_DURATION = 0.5; // חצי שנייה
