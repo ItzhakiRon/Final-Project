@@ -62,7 +62,7 @@ public class PentagoApp extends Application {
             view.updateGameStatus("Player VS Player");
         }
 
-        // יצירת חלון המשחק
+        // חלון המשחק
         gameScene = new Scene(view, 800, 700);
         gameScene.getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
 
