@@ -1,5 +1,8 @@
 package com.example.rongame.ai;
 
+import com.example.rongame.model.BitBoardRepresentation;
+import com.example.rongame.model.PentagoModel;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -9,14 +12,17 @@ public class PentagoAI {
 
     // קבועים למצבי המשחק
     public enum AIState {
-        OFFENSE,    // מצב התקפה - יצירת רצף או השלמת רצף
-        DEFENSE,    // מצב הגנה - חסימת האויב
-        STRATEGIC,  // מצב אסטרטגי - תפיסת עמדות חשובות
-        RANDOM      // מצב אקראי - כשאין אסטרטגיה ברורה
+        OFFENSE,       // מצב התקפה - יצירת רצף או השלמת רצף
+        DEFENSE,       // מצב הגנה - חסימת האויב
+        CONTROL_CENTER, // מצב שליטה במרכז - תפיסת עמדות חשובות במרכז
+        CONTROL_EDGES, // מצב שליטה בקצוות - תפיסת עמדות בקצוות הלוח
+        BLOCK_CORNERS, // מצב חסימת פינות - חסימת פינות אסטרטגיות
+        BUILD_PATTERN, // מצב בניית דפוס - יצירת דפוסים אסטרטגיים מתקדמים
+        CONTROL_ROTATION // מצב שליטה בסיבוב - הכנה לסיבוב מועיל
     }
 
-    // לוח המשחק
-    private int[][] board;
+    // התייחסות למודל המשחק
+    private PentagoModel model;
 
     // מצב נוכחי של ה-AI
     private AIState currentState;
@@ -30,34 +36,29 @@ public class PentagoAI {
     // משתנה לאקראיות
     private Random random;
 
+    // מונה טורנים למעקב אחר התקדמות המשחק
+    private int turnCount;
+
     /**
      * בנאי
      * @param difficulty רמת קושי בין 0-10
+     * @param model מודל המשחק
      */
-    public PentagoAI(int difficulty) {
+    public PentagoAI(int difficulty, PentagoModel model) {
         this.difficultyLevel = Math.max(0, Math.min(10, difficulty));
         this.playerNumber = 1; // ברירת מחדל - שחקן 1 (אדום)
         this.random = new Random();
-        this.board = new int[6][6];
-        this.currentState = AIState.STRATEGIC; // מצב התחלתי
-
-        // אתחול הלוח לריק (-1)
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                this.board[i][j] = -1;
-            }
-        }
+        this.model = model;
+        this.currentState = AIState.CONTROL_CENTER; // מצב התחלתי
+        this.turnCount = 0;
     }
 
     /**
-     * עדכון הלוח לאחר מהלך של השחקן
-     * @param board מצב הלוח הנוכחי
+     * עדכון התייחסות למודל חדש
+     * @param model מודל המשחק
      */
-    public void updateBoard(int[][] board) {
-        this.board = new int[6][6];
-        for (int i = 0; i < 6; i++) {
-            System.arraycopy(board[i], 0, this.board[i], 0, 6);
-        }
+    public void setModel(PentagoModel model) {
+        this.model = model;
         determineState();
     }
 
@@ -67,6 +68,10 @@ public class PentagoAI {
      */
     public int[] makeMove() {
         int[] move;
+        turnCount++; // הגדלת מונה התורים בכל מהלך
+
+        // קביעת מצב AI לפני קבלת החלטה
+        determineState();
 
         // קבלת המהלך המתאים למצב הנוכחי
         switch (currentState) {
@@ -76,11 +81,23 @@ public class PentagoAI {
             case DEFENSE:
                 move = getDefensiveMove();
                 break;
-            case STRATEGIC:
+            case CONTROL_CENTER:
                 move = getStrategicMove();
                 break;
-            case RANDOM:
+            case CONTROL_EDGES:
+                move = getEdgeControlMove();
+                break;
+            case BLOCK_CORNERS:
+                move = getCornerBlockMove();
+                break;
+            case BUILD_PATTERN:
+                move = getPatternMove();
+                break;
+            case CONTROL_ROTATION:
+                move = getRotationControlMove();
+                break;
             default:
+                // מהלך אקראי רק כברירת מחדל אם משהו השתבש
                 move = getRandomMove();
                 break;
         }
@@ -109,10 +126,18 @@ public class PentagoAI {
                 quadrant = defensiveRotation[0];
                 clockwise = defensiveRotation[1] == 1;
             }
-            // אם אין מהלכי התקפה או הגנה, בחירת סיבוב אקראי
+            // אם אין מהלכי התקפה או הגנה, בדיקת סיבוב אסטרטגי
             else {
-                quadrant = random.nextInt(4);
-                clockwise = random.nextBoolean();
+                int[] strategicRotation = findStrategicRotation();
+                if (strategicRotation != null) {
+                    quadrant = strategicRotation[0];
+                    clockwise = strategicRotation[1] == 1;
+                }
+                // אם אין מהלכים מיוחדים, בחירת סיבוב אקראי
+                else {
+                    quadrant = random.nextInt(4);
+                    clockwise = random.nextBoolean();
+                }
             }
         }
 
@@ -133,20 +158,51 @@ public class PentagoAI {
             return;
         }
 
-        // בדיקה אם יש עמדות אסטרטגיות פנויות חשובות
-        if (hasStrategicPositions()) {
-            currentState = AIState.STRATEGIC;
+        // בתחילת המשחק (2-4 תורים ראשונים) - התמקד בבניית דפוסים אסטרטגיים
+        if (turnCount <= 4) {
+            if (hasPatternOpportunity()) {
+                currentState = AIState.BUILD_PATTERN;
+                return;
+            }
+        }
+
+        // בדיקה אם יש עמדות אסטרטגיות במרכז שכדאי לתפוס
+        if (hasCentralPositionsAvailable()) {
+            currentState = AIState.CONTROL_CENTER;
             return;
         }
 
-        // הכנסת אקראיות למצב על פי רמת הקושי
-        if (random.nextInt(10) > difficultyLevel) {
-            currentState = AIState.RANDOM;
+        // בדיקה אם יש הזדמנות לחסום פינות חשובות
+        if (hasCornersThreat()) {
+            currentState = AIState.BLOCK_CORNERS;
             return;
         }
 
-        // בהעדר שיקול אחר, בחירה בין מצב אסטרטגי או התקפי
-        currentState = (random.nextBoolean()) ? AIState.STRATEGIC : AIState.OFFENSE;
+        // בדיקה אם יש הזדמנות לבנות דפוס אסטרטגי
+        if (hasPatternOpportunity()) {
+            currentState = AIState.BUILD_PATTERN;
+            return;
+        }
+
+        // בדיקה אם כדאי להתמקד בקצוות הלוח
+        if (shouldControlEdges()) {
+            currentState = AIState.CONTROL_EDGES;
+            return;
+        }
+
+        // בשלבים מתקדמים יותר של המשחק, התכונן לסיבובים אסטרטגיים
+        if (turnCount > 10) {
+            currentState = AIState.CONTROL_ROTATION;
+            return;
+        }
+
+        // בהעדר שיקול אחר, בחירה באסטרטגיה התקפית בהתאם לרמת הקושי
+        int strategyChoice = random.nextInt(10);
+        if (strategyChoice < difficultyLevel) {
+            currentState = AIState.BUILD_PATTERN; // בחר אסטרטגיה מתקדמת ברמות קושי גבוהות
+        } else {
+            currentState = AIState.CONTROL_CENTER; // ברירת מחדל - אסטרטגיה בסיסית
+        }
     }
 
     //  חיפוש המהלך הטוב ביותר במצב התקפה
@@ -191,14 +247,14 @@ public class PentagoAI {
         return getStrategicMove();
     }
 
-    //  חיפוש המהלך הטוב ביותר במצב אסטרטגי
+    //  חיפוש המהלך הטוב ביותר במצב אסטרטגי (שליטה במרכז)
     private int[] getStrategicMove() {
         List<int[]> strategicPositions = new ArrayList<>();
 
         // עדיפות למרכז הלוח - תצורה 2x2 באמצע הלוח
         int[][] centerPositions = {{2, 2}, {2, 3}, {3, 2}, {3, 3}};
         for (int[] pos : centerPositions) {
-            if (board[pos[0]][pos[1]] == -1) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
                 strategicPositions.add(pos);
             }
         }
@@ -213,7 +269,7 @@ public class PentagoAI {
         strategicPositions.clear();
 
         for (int[] pos : quadrantCenters) {
-            if (board[pos[0]][pos[1]] == -1) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
                 strategicPositions.add(pos);
             }
         }
@@ -222,18 +278,221 @@ public class PentagoAI {
             return strategicPositions.get(random.nextInt(strategicPositions.size()));
         }
 
-        // אם הכל תפוס או על פי הסתברות מסוימת, בחר מהלך אקראי
+        // אם הכל תפוס או על פי הסתברות מסוימת, בחר מהלך בקצה
+        return getEdgeControlMove();
+    }
+
+    // חדש: חיפוש מהלך לשליטה בקצוות הלוח
+    private int[] getEdgeControlMove() {
+        List<int[]> edgePositions = new ArrayList<>();
+
+        // שורות קצה (שורה 0 ושורה 5, לא כולל פינות)
+        for (int j = 1; j < 5; j++) {
+            if (getPieceAt(0, j) == -1) edgePositions.add(new int[]{0, j});
+            if (getPieceAt(5, j) == -1) edgePositions.add(new int[]{5, j});
+        }
+
+        // עמודות קצה (עמודה 0 ועמודה 5, לא כולל פינות)
+        for (int i = 1; i < 5; i++) {
+            if (getPieceAt(i, 0) == -1) edgePositions.add(new int[]{i, 0});
+            if (getPieceAt(i, 5) == -1) edgePositions.add(new int[]{i, 5});
+        }
+
+        if (!edgePositions.isEmpty()) {
+            return edgePositions.get(random.nextInt(edgePositions.size()));
+        }
+
+        // אם אין עמדות קצה פנויות, בדוק עמדות פינה
+        List<int[]> cornerPositions = new ArrayList<>();
+        int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
+
+        for (int[] pos : corners) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                cornerPositions.add(pos);
+            }
+        }
+
+        if (!cornerPositions.isEmpty()) {
+            return cornerPositions.get(random.nextInt(cornerPositions.size()));
+        }
+
+        // אם אין גם קצוות וגם פינות פנויות, חזרה למהלך אקראי
         return getRandomMove();
     }
 
-    //  בחירת מהלך אקראי
+    // חדש: חיפוש מהלך לחסימת פינות אסטרטגיות
+    private int[] getCornerBlockMove() {
+        List<int[]> cornerBlocks = new ArrayList<>();
+
+        // רשימת המיקומים שחוסמים גישה לפינות
+        int[][] cornerBlockPositions = {
+                {0, 1}, {1, 0}, {1, 1},       // חסימת פינה צפון-מערבית
+                {0, 4}, {1, 4}, {1, 5},       // חסימת פינה צפון-מזרחית
+                {4, 0}, {4, 1}, {5, 1},       // חסימת פינה דרום-מערבית
+                {4, 5}, {4, 4}, {5, 4}        // חסימת פינה דרום-מזרחית
+        };
+
+        // בדיקה אם היריב כבר תפס פינה
+        int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
+        boolean[] enemyInCorner = new boolean[4]; // [NW, NE, SW, SE]
+
+        for (int i = 0; i < 4; i++) {
+            enemyInCorner[i] = (getPieceAt(corners[i][0], corners[i][1]) == 1 - playerNumber);
+        }
+
+        // אם היריב תפס פינה, תעדיף לחסום התקדמות מהפינה הזו
+        for (int i = 0; i < 4; i++) {
+            if (enemyInCorner[i]) {
+                int startIdx = i * 3; // כל פינה יש 3 עמדות חסימה
+                for (int j = 0; j < 3; j++) {
+                    int[] pos = cornerBlockPositions[startIdx + j];
+                    if (getPieceAt(pos[0], pos[1]) == -1) {
+                        cornerBlocks.add(pos);
+                    }
+                }
+            }
+        }
+
+        // אם מצאנו עמדות חסימה למיקומים שבהם היריב כבר נמצא, נבחר מהן
+        if (!cornerBlocks.isEmpty()) {
+            return cornerBlocks.get(random.nextInt(cornerBlocks.size()));
+        }
+
+        // אחרת, נבדוק כל עמדות החסימה האפשריות
+        cornerBlocks.clear();
+        for (int[] pos : cornerBlockPositions) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                cornerBlocks.add(pos);
+            }
+        }
+
+        if (!cornerBlocks.isEmpty()) {
+            return cornerBlocks.get(random.nextInt(cornerBlocks.size()));
+        }
+
+        // אם אין עמדות חסימת פינות פנויות, נחזור למהלך אסטרטגי
+        return getStrategicMove();
+    }
+
+    // חדש: חיפוש מהלך לבניית דפוס אסטרטגי
+    private int[] getPatternMove() {
+        // דפוס אלכסוני - בניית "X" באמצע הלוח
+        if (turnCount <= 4) { // משתמש בדפוס זה בטורנים מוקדמים
+            int[][] diagonalPattern = {{1, 1}, {2, 2}, {3, 3}, {4, 4}, {1, 4}, {2, 3}, {3, 2}, {4, 1}};
+            List<int[]> availableDiagonals = new ArrayList<>();
+
+            // בדיקת עמדות פנויות בדפוס האלכסוני
+            for (int[] pos : diagonalPattern) {
+                if (getPieceAt(pos[0], pos[1]) == -1) {
+                    availableDiagonals.add(pos);
+                }
+            }
+
+            // אם יש עמדות פנויות בדפוס, בחר אחת באקראי
+            if (!availableDiagonals.isEmpty()) {
+                return availableDiagonals.get(random.nextInt(availableDiagonals.size()));
+            }
+        }
+
+        // דפוס "משולש" - בניית משולש במרכז
+        if (turnCount > 4 && turnCount <= 8) {
+            int[][] trianglePattern = {{2, 1}, {2, 4}, {3, 1}, {3, 4}, {1, 2}, {1, 3}, {4, 2}, {4, 3}};
+            List<int[]> availableTriangles = new ArrayList<>();
+
+            // בדיקת עמדות פנויות בדפוס המשולשי
+            for (int[] pos : trianglePattern) {
+                if (getPieceAt(pos[0], pos[1]) == -1) {
+                    availableTriangles.add(pos);
+                }
+            }
+
+            if (!availableTriangles.isEmpty()) {
+                return availableTriangles.get(random.nextInt(availableTriangles.size()));
+            }
+        }
+
+        // דפוס "גשר" - חיבור בין שני חלקי הלוח
+        int[][] bridgePattern = {{2, 0}, {2, 5}, {3, 0}, {3, 5}, {0, 2}, {0, 3}, {5, 2}, {5, 3}};
+        List<int[]> availableBridges = new ArrayList<>();
+
+        // בדיקת עמדות פנויות בדפוס הגשר
+        for (int[] pos : bridgePattern) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                availableBridges.add(pos);
+            }
+        }
+
+        if (!availableBridges.isEmpty()) {
+            return availableBridges.get(random.nextInt(availableBridges.size()));
+        }
+
+        // אם אין אפשרויות לדפוסים, חזור למהלך אסטרטגי
+        return getStrategicMove();
+    }
+
+    // חדש: חיפוש מהלך שמכין לסיבוב אסטרטגי
+    private int[] getRotationControlMove() {
+        // זיהוי רביעים שהם המועמדים הטובים ביותר לסיבוב
+        List<Integer> quadrantsWithMostPieces = new ArrayList<>();
+        int[] piecesInQuadrant = new int[4];
+
+        // ספירת כלים בכל רביע
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 6; j++) {
+                int piece = getPieceAt(i, j);
+                if (piece != -1) {
+                    int quadrant = (i / 3) * 2 + (j / 3); // חישוב מספר הרביע (0-3)
+                    piecesInQuadrant[quadrant]++;
+                }
+            }
+        }
+
+        // מציאת הרביע עם מספר הכלים הגבוה ביותר
+        int maxPieces = -1;
+        for (int q = 0; q < 4; q++) {
+            if (piecesInQuadrant[q] > maxPieces) {
+                maxPieces = piecesInQuadrant[q];
+                quadrantsWithMostPieces.clear();
+                quadrantsWithMostPieces.add(q);
+            } else if (piecesInQuadrant[q] == maxPieces) {
+                quadrantsWithMostPieces.add(q);
+            }
+        }
+
+        // מציאת משבצת פנויה באחד הרביעים המועדפים
+        if (!quadrantsWithMostPieces.isEmpty()) {
+            int targetQuadrant = quadrantsWithMostPieces.get(random.nextInt(quadrantsWithMostPieces.size()));
+            int startRow = (targetQuadrant / 2) * 3;
+            int startCol = (targetQuadrant % 2) * 3;
+
+            List<int[]> emptyPositions = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) {
+                    if (getPieceAt(startRow + i, startCol + j) == -1) {
+                        emptyPositions.add(new int[] {startRow + i, startCol + j});
+                    }
+                }
+            }
+
+            if (!emptyPositions.isEmpty()) {
+                return emptyPositions.get(random.nextInt(emptyPositions.size()));
+            }
+        }
+
+        // אם אין משבצות פנויות ברביעים המועדפים, נחזור למהלך אסטרטגי
+        return getStrategicMove();
+    }
+
+    //  בחירת מהלך אקראי - כברירת מחדל אחרונה
     private int[] getRandomMove() {
         List<int[]> availableMoves = new ArrayList<>();
+        BitBoardRepresentation board = model.getBoard();
 
         // איסוף כל המהלכים האפשריים
         for (int i = 0; i < 6; i++) {
             for (int j = 0; j < 6; j++) {
-                if (board[i][j] == -1) {
+                int position = i * 6 + j;
+                if (board.isPositionEmpty(position)) {
                     availableMoves.add(new int[]{i, j});
                 }
             }
@@ -247,12 +506,12 @@ public class PentagoAI {
         return new int[]{0, 0};
     }
 
-    // בדיקה אם יש עמדות אסטרטגיות פנויות משמעותיות
-    private boolean hasStrategicPositions() {
+    // בדיקה אם יש עמדות אסטרטגיות פנויות במרכז הלוח
+    private boolean hasCentralPositionsAvailable() {
         // בדיקת המרכז
         int[][] centerPositions = {{2, 2}, {2, 3}, {3, 2}, {3, 3}};
         for (int[] pos : centerPositions) {
-            if (board[pos[0]][pos[1]] == -1) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
                 return true;
             }
         }
@@ -260,7 +519,7 @@ public class PentagoAI {
         // בדיקת מרכזי הרביעים
         int[][] quadrantCenters = {{1, 1}, {1, 4}, {4, 1}, {4, 4}};
         for (int[] pos : quadrantCenters) {
-            if (board[pos[0]][pos[1]] == -1) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
                 return true;
             }
         }
@@ -268,7 +527,92 @@ public class PentagoAI {
         return false;
     }
 
-   // בדיקה אם יש מהלך שיכול להוביל לניצחון מיידי
+    // חדש: בדיקה אם יש איום על פינות חשובות שכדאי לחסום
+    private boolean hasCornersThreat() {
+        int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
+
+        // בדיקה אם היריב כבר תפס פינה
+        for (int[] corner : corners) {
+            if (getPieceAt(corner[0], corner[1]) == 1 - playerNumber) {
+                // אם היריב תפס פינה, כדאי לחסום התקדמות ממנה
+                return true;
+            }
+        }
+
+        // בדיקה אם יש איום על פינה (היריב קרוב לפינה)
+        int[][] cornerApproaches = {
+                {0, 1}, {1, 0}, {1, 1},       // גישה לפינה צפון-מערבית
+                {0, 4}, {1, 4}, {1, 5},       // גישה לפינה צפון-מזרחית
+                {4, 0}, {4, 1}, {5, 1},       // גישה לפינה דרום-מערבית
+                {4, 5}, {4, 4}, {5, 4}        // גישה לפינה דרום-מזרחית
+        };
+
+        for (int[] pos : cornerApproaches) {
+            if (getPieceAt(pos[0], pos[1]) == 1 - playerNumber) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // חדש: בדיקה אם יש הזדמנות לבניית דפוס אסטרטגי
+    private boolean hasPatternOpportunity() {
+        // בדיקת האם כבר יש התחלה של דפוס אלכסוני
+        if (turnCount <= 4) {
+            int[][] diagonalPositions = {{1, 1}, {2, 2}, {3, 3}, {4, 4}, {1, 4}, {2, 3}, {3, 2}, {4, 1}};
+            int countPlayerPieces = 0;
+
+            for (int[] pos : diagonalPositions) {
+                if (getPieceAt(pos[0], pos[1]) == playerNumber) {
+                    countPlayerPieces++;
+                }
+            }
+
+            // אם כבר יש לפחות אבן אחת בדפוס, זו הזדמנות טובה
+            return countPlayerPieces > 0;
+        }
+
+        // בדיקת האם כבר התחלנו דפוס משולש
+        if (turnCount > 4 && turnCount <= 8) {
+            int[][] trianglePositions = {{2, 1}, {2, 4}, {3, 1}, {3, 4}, {1, 2}, {1, 3}, {4, 2}, {4, 3}};
+            int countPlayerPieces = 0;
+
+            for (int[] pos : trianglePositions) {
+                if (getPieceAt(pos[0], pos[1]) == playerNumber) {
+                    countPlayerPieces++;
+                }
+            }
+
+            return countPlayerPieces > 0;
+        }
+
+        return false;
+    }
+
+    // חדש: בדיקה אם כדאי להתמקד בשליטה בקצוות
+    private boolean shouldControlEdges() {
+        // בדיקת אחוז כלים בקצוות
+        int edgePieces = 0;
+        int totalEdgePositions = 16; // סה"כ 16 משבצות בקצוות (ללא פינות)
+
+        // בדיקת שורות קצה
+        for (int j = 1; j < 5; j++) {
+            if (getPieceAt(0, j) != -1) edgePieces++;
+            if (getPieceAt(5, j) != -1) edgePieces++;
+        }
+
+        // בדיקת עמודות קצה
+        for (int i = 1; i < 5; i++) {
+            if (getPieceAt(i, 0) != -1) edgePieces++;
+            if (getPieceAt(i, 5) != -1) edgePieces++;
+        }
+
+        // אם פחות מ-50% מהקצוות תפוסים, שווה להתמקד בהם
+        return (edgePieces < totalEdgePositions / 2);
+    }
+
+    // בדיקה אם יש מהלך שיכול להוביל לניצחון מיידי
     private boolean hasWinningMove(int player) {
         List<int[]> potentialWins = findPotentialLinesWith(player, 4);
         return !potentialWins.isEmpty();
@@ -321,10 +665,11 @@ public class PentagoAI {
                 return;
             }
 
-            if (board[r][c] == -1) {
+            int piece = getPieceAt(r, c);
+            if (piece == -1) {
                 emptyCount++;
                 emptyPos = new int[]{r, c};
-            } else if (board[r][c] == player) {
+            } else if (piece == player) {
                 playerCount++;
             } else {
                 // אם יש כלי של היריב, הקו הזה לא רלוונטי
@@ -345,14 +690,15 @@ public class PentagoAI {
             for (int direction = 0; direction < 2; direction++) {
                 boolean clockwise = direction == 1;
 
-                // יצירת עותק של הלוח לבדיקת המהלך
-                int[][] tempBoard = copyBoard();
+                // יצירת מודל זמני לבדיקת המהלך
+                PentagoModel tempModel = createTempModel();
+                BitBoardRepresentation tempBoard = tempModel.getBoard();
 
                 // סימולציה של סיבוב הרביע
-                rotateQuadrant(tempBoard, quadrant, clockwise);
+                tempBoard.rotateQuadrant(quadrant, clockwise);
 
                 // בדיקה אם הסיבוב יוצר ניצחון
-                if (hasWinningLine(tempBoard, playerNumber)) {
+                if (tempBoard.hasWinningLine(playerNumber)) {
                     return new int[]{quadrant, direction};
                 }
             }
@@ -368,14 +714,16 @@ public class PentagoAI {
             for (int direction = 0; direction < 2; direction++) {
                 boolean clockwise = direction == 1;
 
-                // יצירת עותק של הלוח לבדיקת המהלך
-                int[][] tempBoard = copyBoard();
+                // יצירת מודל זמני לבדיקת המהלך
+                PentagoModel tempModel = createTempModel();
+                BitBoardRepresentation tempBoard = tempModel.getBoard();
 
                 // סימולציה של סיבוב הרביע
-                rotateQuadrant(tempBoard, quadrant, clockwise);
+                tempBoard.rotateQuadrant(quadrant, clockwise);
 
                 // בדיקה אם הסיבוב מונע ניצחון של היריב
-                if (!hasWinningLine(tempBoard, 1 - playerNumber) && hasThreatsCount(tempBoard, 1 - playerNumber) < hasThreatsCount(board, 1 - playerNumber)) {
+                if (!tempBoard.hasWinningLine(1 - playerNumber) &&
+                        countThreats(tempBoard, 1 - playerNumber) < countThreats(model.getBoard(), 1 - playerNumber)) {
                     return new int[]{quadrant, direction};
                 }
             }
@@ -384,68 +732,111 @@ public class PentagoAI {
         return null;
     }
 
-    // בדיקה אם יש רצף של 5 בלוח
-    private boolean hasWinningLine(int[][] boardToCheck, int player) {
-        // בדיקת שורות
+    // חדש: חיפוש סיבוב רביע אסטרטגי
+    private int[] findStrategicRotation() {
+        int bestScore = -1000;
+        int[] bestRotation = null;
+
+        // בדיקת כל הרביעים וכיווני הסיבוב
+        for (int quadrant = 0; quadrant < 4; quadrant++) {
+            for (int direction = 0; direction < 2; direction++) {
+                boolean clockwise = direction == 1;
+
+                // יצירת מודל זמני לבדיקת המהלך
+                PentagoModel tempModel = createTempModel();
+                BitBoardRepresentation tempBoard = tempModel.getBoard();
+
+                // סימולציה של סיבוב הרביע
+                tempBoard.rotateQuadrant(quadrant, clockwise);
+
+                // חישוב הערכה של מצב הלוח לאחר הסיבוב
+                int score = evaluatePositionAfterRotation(tempBoard);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestRotation = new int[]{quadrant, direction};
+                }
+            }
+        }
+
+        return bestRotation;
+    }
+
+    // חדש: הערכת מצב הלוח לאחר סיבוב
+    private int evaluatePositionAfterRotation(BitBoardRepresentation board) {
+        int score = 0;
+
+        // בונוס למספר האיומים שלנו (רצף של 3 + משבצת ריקה)
+        score += 3 * countThreats(board, playerNumber);
+
+        // מינוס למספר האיומים של היריב
+        score -= 5 * countThreats(board, 1 - playerNumber);
+
+        // בדיקת עמדות אסטרטגיות
+        int[][] strategicSpots = {
+                {2, 2}, {2, 3}, {3, 2}, {3, 3}, // מרכז הלוח
+                {1, 1}, {1, 4}, {4, 1}, {4, 4}  // מרכזי רביעים
+        };
+
+        for (int[] pos : strategicSpots) {
+            int piece = board.getPieceAt(pos[0], pos[1]);
+            if (piece == playerNumber) {
+                score += 2;
+            } else if (piece == 1 - playerNumber) {
+                score -= 1;
+            }
+        }
+
+        // הוספת מרכיב אקראי קטן למניעת צפיות מוחלטת
+        score += random.nextInt(3);
+
+        return score;
+    }
+
+    // יצירת מודל זמני לסימולציות
+    private PentagoModel createTempModel() {
+        PentagoModel tempModel = new PentagoModel();
+        BitBoardRepresentation originalBoard = model.getBoard();
+        BitBoardRepresentation tempBoard = tempModel.getBoard();
+
+        // העתקת מצב הלוח
         for (int i = 0; i < 6; i++) {
-            if (checkLine(boardToCheck, i, 0, 0, 1, player, 5)) {
-                return true;
-            }
-        }
-
-        // בדיקת עמודות
-        for (int j = 0; j < 6; j++) {
-            if (checkLine(boardToCheck, 0, j, 1, 0, player, 5)) {
-                return true;
-            }
-        }
-
-        // בדיקת אלכסונים (שמאל לימין)
-        for (int i = 0; i <= 1; i++) {
-            for (int j = 0; j <= 1; j++) {
-                if (checkLine(boardToCheck, i, j, 1, 1, player, 5)) {
-                    return true;
+            for (int j = 0; j < 6; j++) {
+                int piece = originalBoard.getPieceAt(i, j);
+                if (piece != -1) {
+                    tempBoard.placePiece(i * 6 + j, piece);
                 }
             }
         }
 
-        // בדיקת אלכסונים (ימין לשמאל)
-        for (int i = 0; i <= 1; i++) {
-            for (int j = 4; j <= 5; j++) {
-                if (checkLine(boardToCheck, i, j, 1, -1, player, 5)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return tempModel;
     }
 
     //  ספירת איומים ברמת 4 כלים ברצף
-    private int hasThreatsCount(int[][] boardToCheck, int player) {
+    private int countThreats(BitBoardRepresentation board, int player) {
         int threats = 0;
 
         // בדיקת שורות
         for (int i = 0; i < 6; i++) {
-            threats += countThreatsInLine(boardToCheck, i, 0, 0, 1, player);
+            threats += countThreatsInLine(board, i, 0, 0, 1, player);
         }
 
         // בדיקת עמודות
         for (int j = 0; j < 6; j++) {
-            threats += countThreatsInLine(boardToCheck, 0, j, 1, 0, player);
+            threats += countThreatsInLine(board, 0, j, 1, 0, player);
         }
 
         // בדיקת אלכסונים (שמאל לימין)
         for (int i = 0; i <= 1; i++) {
             for (int j = 0; j <= 1; j++) {
-                threats += countThreatsInLine(boardToCheck, i, j, 1, 1, player);
+                threats += countThreatsInLine(board, i, j, 1, 1, player);
             }
         }
 
         // בדיקת אלכסונים (ימין לשמאל)
         for (int i = 0; i <= 1; i++) {
             for (int j = 4; j <= 5; j++) {
-                threats += countThreatsInLine(boardToCheck, i, j, 1, -1, player);
+                threats += countThreatsInLine(board, i, j, 1, -1, player);
             }
         }
 
@@ -453,7 +844,7 @@ public class PentagoAI {
     }
 
     // ספירת איומים בקו ספציפי
-    private int countThreatsInLine(int[][] boardToCheck, int startRow, int startCol, int rowInc, int colInc, int player) {
+    private int countThreatsInLine(BitBoardRepresentation board, int startRow, int startCol, int rowInc, int colInc, int player) {
         int playerCount = 0;
         int emptyCount = 0;
 
@@ -467,9 +858,10 @@ public class PentagoAI {
                 return 0;
             }
 
-            if (boardToCheck[r][c] == player) {
+            int piece = board.getPieceAt(r, c);
+            if (piece == player) {
                 playerCount++;
-            } else if (boardToCheck[r][c] == -1) {
+            } else if (piece == -1) {
                 emptyCount++;
             } else {
                 // אם יש כלי של היריב, הקו הזה לא רלוונטי
@@ -481,68 +873,9 @@ public class PentagoAI {
         return (playerCount == 4 && emptyCount == 1) ? 1 : 0;
     }
 
-    // בדיקה אם יש רצף של כלים מסוימים בקו (שורה/עמודה/אלכסון)
-    private boolean checkLine(int[][] boardToCheck, int startRow, int startCol, int rowInc, int colInc, int player, int length) {
-        int count = 0;
-
-        for (int k = 0; k < length; k++) {
-            int r = startRow + k * rowInc;
-            int c = startCol + k * colInc;
-
-            // ודא שהקואורדינטות בגבולות הלוח
-            if (r < 0 || r >= 6 || c < 0 || c >= 6) {
-                return false;
-            }
-
-            if (boardToCheck[r][c] == player) {
-                count++;
-            } else {
-                return false;
-            }
-        }
-
-        return count == length;
-    }
-
-    // יצירת עותק של הלוח הנוכחי
-    private int[][] copyBoard() {
-        int[][] copy = new int[6][6];
-        for (int i = 0; i < 6; i++) {
-            System.arraycopy(board[i], 0, copy[i], 0, 6);
-        }
-        return copy;
-    }
-
-    //  סיבוב רביע בלוח
-    private void rotateQuadrant(int[][] boardToRotate, int quadrant, boolean clockwise) {
-        // המרת מספר רביע לשורה ועמודת התחלה
-        int startRow = (quadrant / 2) * 3;
-        int startCol = (quadrant % 2) * 3;
-
-        // יצירת מטריצה זמנית לשמירת הערכים
-        int[][] temp = new int[3][3];
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                temp[i][j] = boardToRotate[startRow + i][startCol + j];
-            }
-        }
-
-        // סיבוב המטריצה
-        if (clockwise) {
-            // סיבוב עם כיוון השעון
-            for (int i = 0; i < 3; i++) {
-                for (int j = 0; j < 3; j++) {
-                    boardToRotate[startRow + i][startCol + j] = temp[2 - j][i];
-                }
-            }
-        } else {
-            // סיבוב נגד כיוון השעון
-            for (int i = 0; i < 3; i++) {
-                for (int j = 0; j < 3; j++) {
-                    boardToRotate[startRow + i][startCol + j] = temp[j][2 - i];
-                }
-            }
-        }
+    // Helper method לקבלת ערך במיקום מסוים בלוח
+    private int getPieceAt(int row, int col) {
+        return model.getBoard().getPieceAt(row, col);
     }
 
     // הגדרת מספר השחקן
@@ -550,15 +883,13 @@ public class PentagoAI {
         this.playerNumber = player;
     }
 
-    /*
     // הגדרת רמת הקושי
     public void setDifficulty(int difficulty) {
         this.difficultyLevel = Math.max(0, Math.min(10, difficulty));
     }
 
-    // קבלת מצב ה-AI הנוכחי
-    public AIState getCurrentState() {
-        return currentState;
+    // איפוס מונה טורנים (למשחק חדש)
+    public void resetTurnCount() {
+        this.turnCount = 0;
     }
-    */
 }

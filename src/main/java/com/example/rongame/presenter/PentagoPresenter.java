@@ -29,8 +29,8 @@ public class PentagoPresenter implements Observer {
         this.isAIEnabled = enableAI;
 
         if (isAIEnabled) {
-            // יצירת מופע של ה-AI עם רמת קושי בינונית (7)
-            this.ai = new PentagoAI(7);
+            // יצירת מופע של ה-AI עם רמת קושי בינונית (7) והעברת המודל
+            this.ai = new PentagoAI(7, model);
             this.ai.setPlayerNumber(1); // ה-AI תמיד משחק כצד שני (אדום)
             this.aiExecutor = Executors.newSingleThreadExecutor();
         }
@@ -236,14 +236,8 @@ public class PentagoPresenter implements Observer {
                 // המתנה קצרה כדי שלמשתמש תהיה תחושה שהמחשב חושב
                 Thread.sleep(800);
 
-                // עדכון הלוח באובייקט ה-AI
-                int[][] boardState = new int[6][6];
-                for (int r = 0; r < 6; r++) {
-                    for (int c = 0; c < 6; c++) {
-                        boardState[r][c] = model.getBoard().getPieceAt(r, c);
-                    }
-                }
-                ai.updateBoard(boardState);
+                // עדכון המודל באובייקט ה-AI (במידה והמודל השתנה)
+                ai.setModel(model);
 
                 // קבלת מהלך הנחת כלי מה-AI
                 int[] move = ai.makeMove();
