@@ -21,7 +21,7 @@ public class PentagoAI {
         CONTROL_ROTATION // מצב שליטה בסיבוב - הכנה לסיבוב מועיל
     }
 
-    // התייחסות למודל המשחק
+    // הפנייה למודל המשחק
     private PentagoModel model;
 
     // מצב נוכחי של ה-AI
