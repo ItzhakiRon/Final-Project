@@ -96,23 +96,23 @@ public class BoardView extends StackPane {
             Button buttonCCW = createArrowButton("↺", quadIndex, false); // נגד כיוון השעון
             Button buttonCW = createArrowButton("↻", quadIndex, true);  // עם כיוון השעון
 
-            // הוספה למערך הכפתורים
+            // הוספה למערך הכפתורים - החלפת הכפתורים למיקום עקבי
             switch (i) {
                 case 0: // שמאל עליון
-                    rotationButtons[0] = buttonCCW; // למעלה
-                    rotationButtons[4] = buttonCW;  // משמאל
+                    rotationButtons[0] = buttonCW;   // למעלה - עם כיוון השעון
+                    rotationButtons[4] = buttonCCW;  // משמאל - נגד כיוון השעון
                     break;
                 case 1: // ימין עליון
-                    rotationButtons[1] = buttonCW;  // למעלה
-                    rotationButtons[6] = buttonCCW; // מימין
+                    rotationButtons[1] = buttonCCW;  // למעלה - נגד כיוון השעון
+                    rotationButtons[6] = buttonCW;   // מימין - עם כיוון השעון
                     break;
                 case 2: // שמאל תחתון
-                    rotationButtons[2] = buttonCW;  // למטה
-                    rotationButtons[5] = buttonCCW; // משמאל
+                    rotationButtons[2] = buttonCCW;  // למטה - נגד כיוון השעון
+                    rotationButtons[5] = buttonCW;   // משמאל - עם כיוון השעון
                     break;
                 case 3: // ימין תחתון
-                    rotationButtons[3] = buttonCCW; // למטה
-                    rotationButtons[7] = buttonCW;  // מימין
+                    rotationButtons[3] = buttonCW;   // למטה - עם כיוון השעון
+                    rotationButtons[7] = buttonCCW;  // מימין - נגד כיוון השעון
                     break;
             }
         }
