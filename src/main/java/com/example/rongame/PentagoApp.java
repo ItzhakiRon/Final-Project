@@ -31,7 +31,7 @@ public class PentagoApp extends Application {
         // הגדרת חלון המשחק
         primaryStage.setTitle("PENTAGO GAME");
         primaryStage.setScene(menuScene);
-        primaryStage.setResizable(true);
+        primaryStage.setResizable(false);
         primaryStage.show();
     }
 

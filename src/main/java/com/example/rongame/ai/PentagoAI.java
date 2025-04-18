@@ -9,10 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-/**
- * בינה מלאכותית מבוססת FSM למשחק Pentago
- * גרסה מנוקה עם רמת קושי קבועה ומאתגרת
- */
+// בינה מלאכותית מבוססת FSM
 public class PentagoAI {
 
     // קבועים למצבי המשחק
@@ -51,10 +48,8 @@ public class PentagoAI {
     // מספר המהלכים להסתכל קדימה בניתוח
     private final int LOOK_AHEAD_DEPTH = 3;
 
-    /**
-     * בנאי
-     * @param model מודל המשחק
-     */
+    // בנאי
+    // מודל המשחק
     public PentagoAI(PentagoModel model) {
         this.playerNumber = 1; // ברירת מחדל - שחקן 1 (לבן)
         this.random = new Random();
@@ -66,9 +61,7 @@ public class PentagoAI {
         initializeStrategicPatterns();
     }
 
-    /**
-     * אתחול מטריצת משקלים לעמדות על הלוח
-     */
+    // אתחול מטריצת משקלים לעמדות על הלוח
     private void initializePositionWeights() {
         positionWeights = new int[6][6];
 
@@ -113,9 +106,7 @@ public class PentagoAI {
         }
     }
 
-    /**
-     * אתחול דפוסים אסטרטגיים
-     */
+    // אתחול דפוסים אסטרטגיים
     private void initializeStrategicPatterns() {
         strategicPatterns = new HashMap<>();
 
@@ -167,10 +158,8 @@ public class PentagoAI {
         strategicPatterns.put("ring_pattern", ringPattern);
     }
 
-    /**
-     * ביצוע מהלך של הנחת כלי על הלוח
-     * @return מערך עם [שורה, עמודה] של המהלך
-     */
+    // ביצוע מהלך של הנחת כלי על הלוח
+    // @return מערך עם [שורה, עמודה] של המהלך
     public int[] makeMove() {
         int[] move;
         turnCount++; // הגדלת מונה התורים בכל מהלך
@@ -216,10 +205,8 @@ public class PentagoAI {
         return move;
     }
 
-    /**
-     * ביצוע סיבוב של רביע בלוח
-     * @return מערך עם [רביע, כיוון] כאשר כיוון מיוצג כ-1 עבור כיוון השעון ו-0 עבור נגד כיוון השעון
-     */
+    // ביצוע סיבוב של רביע בלוח
+    // מערך עם [רביע, כיוון] כאשר כיוון מיוצג כ-1 עבור כיוון השעון ו-0 עבור נגד כיוון השעון
     public int[] makeRotation() {
         int quadrant;
         boolean clockwise;
@@ -277,9 +264,7 @@ public class PentagoAI {
         return new int[]{quadrant, clockwise ? 1 : 0};
     }
 
-    /**
-     * עדכון מצב ה-FSM בהתבסס על מצב הלוח הנוכחי
-     */
+    // עדכון מצב ה-FSM בהתבסס על מצב הלוח הנוכחי
     private void determineState() {
         // אם יש אפשרות לניצחון מיידי, עוברים למצב התקפה
         if (hasWinningMove(playerNumber)) {
@@ -341,9 +326,7 @@ public class PentagoAI {
         currentState = (random.nextInt(2) == 0) ? AIState.BUILD_PATTERN : AIState.CONTROL_CENTER;
     }
 
-    /**
-     * האם להשתמש בחישוב מהלכים קדימה
-     */
+    // האם להשתמש בחישוב מהלכים קדימה
     private boolean shouldUseLookAhead() {
         // יותר סיכוי לחישוב מעמיק ככל שהמשחק מתקדם
         int stageProgress = Math.min(turnCount / 3, 10);
@@ -352,9 +335,7 @@ public class PentagoAI {
         return random.nextInt(10) < (8 + stageProgress) / 2;
     }
 
-    /**
-     * חישוב המהלך הטוב ביותר עם חשיבה קדימה
-     */
+    // חישוב המהלך הטוב ביותר עם חשיבה קדימה
     private int[] calculateBestMoveWithLookAhead() {
         List<int[]> possibleMoves = getAllPossibleMoves();
         int[] bestMove = null;
@@ -379,9 +360,7 @@ public class PentagoAI {
         return bestMove;
     }
 
-    /**
-     * הערכת ציון למהלך ספציפי
-     */
+    // הערכת ציון למהלך ספציפי
     private int evaluateMoveScore(int row, int col) {
         // חישוב בסיסי של ציון המהלך
         int score = 0;
@@ -412,9 +391,7 @@ public class PentagoAI {
         return score;
     }
 
-    /**
-     * ספירת אפשרויות סיבוב שיובילו לניצחון
-     */
+    // ספירת אפשרויות סיבוב שיובילו לניצחון
     private int countWinningRotations(PentagoModel model) {
         int count = 0;
 
@@ -437,9 +414,7 @@ public class PentagoAI {
         return count;
     }
 
-    /**
-     * בדיקה אם מיקום הוא חלק מדפוס אסטרטגי
-     */
+    // בדיקה אם מיקום הוא חלק מדפוס אסטרטגי
     private boolean isPartOfStrategicPattern(int row, int col) {
         for (List<int[]> pattern : strategicPatterns.values()) {
             for (int[] pos : pattern) {
@@ -451,9 +426,7 @@ public class PentagoAI {
         return false;
     }
 
-    /**
-     * יצירת מודל זמני על בסיס מודל קיים
-     */
+    // יצירת מודל זמני על בסיס מודל קיים
     private PentagoModel createTempModelFrom(PentagoModel sourceModel) {
         PentagoModel tempModel = new PentagoModel();
         BitBoardRepresentation sourceBoard = sourceModel.getBoard();
@@ -472,9 +445,7 @@ public class PentagoAI {
         return tempModel;
     }
 
-    /**
-     * קבלת כל המהלכים האפשריים
-     */
+    // קבלת כל המהלכים האפשריים
     private List<int[]> getAllPossibleMoves() {
         List<int[]> moves = new ArrayList<>();
         BitBoardRepresentation board = model.getBoard();
@@ -490,9 +461,7 @@ public class PentagoAI {
         return moves;
     }
 
-    /**
-     * מהלך דפוס אסטרטגי משופר
-     */
+    // מהלך דפוס אסטרטגי משופר
     private int[] getAdvancedPatternMove() {
         // בחירת דפוס אסטרטגי מתאים למצב המשחק הנוכחי
         String bestPatternKey = selectBestPattern();
@@ -530,9 +499,7 @@ public class PentagoAI {
         return getPatternMove();
     }
 
-    /**
-     * בחירת הדפוס האסטרטגי הטוב ביותר למצב הנוכחי
-     */
+    // בחירת הדפוס האסטרטגי הטוב ביותר למצב הנוכחי
     private String selectBestPattern() {
         Map<String, Integer> patternScores = new HashMap<>();
 
@@ -595,9 +562,7 @@ public class PentagoAI {
         return bestPattern;
     }
 
-    /**
-     * חיפוש סיבוב אסטרטגי משופר
-     */
+    // חיפוש סיבוב אסטרטגי משופר
     private int[] findAdvancedStrategicRotation() {
         int bestScore = Integer.MIN_VALUE;
         int[] bestRotation = null;
@@ -627,9 +592,7 @@ public class PentagoAI {
         return bestRotation;
     }
 
-    /**
-     * הערכה מתקדמת של ציון סיבוב
-     */
+    // הערכה מתקדמת של ציון סיבוב
     private int evaluateAdvancedRotationScore(BitBoardRepresentation board, int quadrant, boolean clockwise) {
         int score = 0;
 
@@ -663,9 +626,7 @@ public class PentagoAI {
         return score;
     }
 
-    /**
-     * הערכת ערך של דפוס לאחר סיבוב
-     */
+    // הערכת ערך של דפוס לאחר סיבוב
     private int evaluatePatternAfterRotation(BitBoardRepresentation board, List<int[]> pattern) {
         int score = 0;
         int ownedCount = 0;
@@ -692,9 +653,7 @@ public class PentagoAI {
         return score;
     }
 
-    /**
-     * ספירת כלים ברביע
-     */
+    // ספירת כלים ברביע
     private int countPiecesInQuadrant(BitBoardRepresentation board, int quadrant) {
         int count = 0;
         int startRow = (quadrant / 2) * 3;
@@ -711,9 +670,7 @@ public class PentagoAI {
         return count;
     }
 
-    /**
-     * ספירת כלים של שחקן ספציפי ברביע
-     */
+    // ספירת כלים של שחקן ספציפי ברביע
     private int countPlayerPiecesInQuadrant(BitBoardRepresentation board, int quadrant, int player) {
         int count = 0;
         int startRow = (quadrant / 2) * 3;
@@ -730,9 +687,7 @@ public class PentagoAI {
         return count;
     }
 
-    /**
-     * הערכת עמדות אסטרטגיות לאחר סיבוב
-     */
+    // הערכת עמדות אסטרטגיות לאחר סיבוב
     private int evaluateStrategicPositionsAfterRotation(BitBoardRepresentation board) {
         int score = 0;
 
@@ -754,9 +709,7 @@ public class PentagoAI {
         return score;
     }
 
-    /**
-     * מציאת סיבוב חכם (כאשר אין אופציות ברורות)
-     */
+    // מציאת סיבוב חכם (כאשר אין אופציות ברורות)
     private int[] findSmartRandomRotation() {
         // מועדף להשתמש ברביע עם כמות מאוזנת של כלים או ברביע עם כלים של היריב
         List<Integer> potentialQuadrants = new ArrayList<>();
@@ -794,9 +747,7 @@ public class PentagoAI {
         return new int[]{selectedQuadrant, clockwise ? 1 : 0};
     }
 
-    /**
-     * בדיקת הזדמנות לדפוסים אסטרטגיים
-     */
+    // בדיקת הזדמנות לדפוסים אסטרטגיים
     private boolean hasAdvancedPatternOpportunity() {
         // בדיקת האם יש דפוס שכבר התחלנו
         for (List<int[]> pattern : strategicPatterns.values()) {
@@ -821,9 +772,7 @@ public class PentagoAI {
         return false;
     }
 
-    /**
-     * חיפוש המהלך הטוב ביותר במצב התקפה
-     */
+    // חיפוש המהלך הטוב ביותר במצב התקפה
     private int[] getOffensiveMove() {
         // חיפוש מהלכים שמובילים לרצף של 4
         List<int[]> potentialWins = findPotentialLinesWith(playerNumber, 3);
@@ -844,9 +793,7 @@ public class PentagoAI {
         return getStrategicMove();
     }
 
-    /**
-     * חיפוש המהלך הטוב ביותר במצב הגנה
-     */
+    // חיפוש המהלך הטוב ביותר במצב הגנה
     private int[] getDefensiveMove() {
         // חיפוש מהלכים שחוסמים רצף של 4 של היריב
         List<int[]> criticalBlocks = findPotentialLinesWith(1 - playerNumber, 3);
@@ -867,9 +814,7 @@ public class PentagoAI {
         return getStrategicMove();
     }
 
-    /**
-     * חיפוש המהלך הטוב ביותר במצב אסטרטגי (שליטה במרכז)
-     */
+    // חיפוש המהלך הטוב ביותר במצב אסטרטגי (שליטה במרכז)
     private int[] getStrategicMove() {
         List<int[]> strategicPositions = new ArrayList<>();
 
@@ -904,9 +849,7 @@ public class PentagoAI {
         return getEdgeControlMove();
     }
 
-    /**
-     * חיפוש מהלך לשליטה בקצוות הלוח
-     */
+    // חיפוש מהלך לשליטה בקצוות הלוח
     private int[] getEdgeControlMove() {
         List<int[]> edgePositions = new ArrayList<>();
 
@@ -944,9 +887,7 @@ public class PentagoAI {
         return getRandomMove();
     }
 
-    /**
-     * חיפוש מהלך לחסימת פינות אסטרטגיות
-     */
+    // חיפוש מהלך לחסימת פינות אסטרטגיות
     private int[] getCornerBlockMove() {
         List<int[]> cornerBlocks = new ArrayList<>();
 
@@ -1000,9 +941,7 @@ public class PentagoAI {
         return getStrategicMove();
     }
 
-    /**
-     * חיפוש מהלך לבניית דפוס אסטרטגי
-     */
+    // חיפוש מהלך לבניית דפוס אסטרטגי
     private int[] getPatternMove() {
         // דפוס אלכסוני - בניית "X" באמצע הלוח
         if (turnCount <= 4) { // משתמש בדפוס זה בטורנים מוקדמים
@@ -1058,9 +997,7 @@ public class PentagoAI {
         return getStrategicMove();
     }
 
-    /**
-     * חיפוש מהלך שמכין לסיבוב אסטרטגי
-     */
+    // חיפוש מהלך שמכין לסיבוב אסטרטגי
     private int[] getRotationControlMove() {
         // זיהוי רביעים שהם המועמדים הטובים ביותר לסיבוב
         List<Integer> quadrantsWithMostPieces = new ArrayList<>();
@@ -1113,9 +1050,7 @@ public class PentagoAI {
         return getStrategicMove();
     }
 
-    /**
-     * בחירת מהלך אקראי - כברירת מחדל אחרונה
-     */
+    // בחירת מהלך אקראי - כברירת מחדל אחרונה
     private int[] getRandomMove() {
         List<int[]> availableMoves = new ArrayList<>();
         BitBoardRepresentation board = model.getBoard();
@@ -1138,9 +1073,7 @@ public class PentagoAI {
         return new int[]{0, 0};
     }
 
-    /**
-     * בדיקה אם יש עמדות אסטרטגיות פנויות במרכז הלוח
-     */
+    // בדיקה אם יש עמדות אסטרטגיות פנויות במרכז הלוח
     private boolean hasCentralPositionsAvailable() {
         // בדיקת המרכז
         int[][] centerPositions = {{2, 2}, {2, 3}, {3, 2}, {3, 3}};
@@ -1161,9 +1094,7 @@ public class PentagoAI {
         return false;
     }
 
-    /**
-     * בדיקה אם יש איום על פינות חשובות שכדאי לחסום
-     */
+    // בדיקה אם יש איום על פינות חשובות שכדאי לחסום
     private boolean hasCornersThreat() {
         int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
 
@@ -1191,9 +1122,7 @@ public class PentagoAI {
         return false;
     }
 
-    /**
-     * בדיקה אם כדאי להתמקד בשליטה בקצוות
-     */
+    // בדיקה אם כדאי להתמקד בשליטה בקצוות
     private boolean shouldControlEdges() {
         // בדיקת אחוז כלים בקצוות
         int edgePieces = 0;
@@ -1215,17 +1144,13 @@ public class PentagoAI {
         return (edgePieces < totalEdgePositions / 2);
     }
 
-    /**
-     * בדיקה אם יש מהלך שיכול להוביל לניצחון מיידי
-     */
+    // בדיקה אם יש מהלך שיכול להוביל לניצחון מיידי
     private boolean hasWinningMove(int player) {
         List<int[]> potentialWins = findPotentialLinesWith(player, 4);
         return !potentialWins.isEmpty();
     }
 
-    /**
-     * מציאת מהלכים שיכולים להשלים רצף בגודל מסוים
-     */
+    // מציאת מהלכים שיכולים להשלים רצף בגודל מסוים
     private List<int[]> findPotentialLinesWith(int player, int lineSize) {
         List<int[]> potentialMoves = new ArrayList<>();
 
@@ -1256,9 +1181,7 @@ public class PentagoAI {
         return potentialMoves;
     }
 
-    /**
-     * בדיקה ספציפית של קו פוטנציאלי (שורה, עמודה או אלכסון)
-     */
+    // בדיקה ספציפית של קו פוטנציאלי (שורה, עמודה או אלכסון)
     private void checkPotentialLine(List<int[]> moves, int startRow, int startCol, int rowInc, int colInc, int player, int lineSize) {
         int emptyCount = 0;
         int playerCount = 0;
@@ -1292,9 +1215,7 @@ public class PentagoAI {
         }
     }
 
-    /**
-     * חיפוש סיבוב רביע שיוביל לניצחון
-     */
+    // חיפוש סיבוב רביע שיוביל לניצחון
     private int[] findOffensiveRotation() {
         // תחילה, ננסה מהלכים בכל הרביעים ובשני הכיוונים
         for (int quadrant = 0; quadrant < 4; quadrant++) {
@@ -1318,9 +1239,7 @@ public class PentagoAI {
         return null;
     }
 
-    /**
-     * חיפוש סיבוב רביע שימנע ניצחון של היריב
-     */
+    // חיפוש סיבוב רביע שימנע ניצחון של היריב
     private int[] findDefensiveRotation() {
         // בדיקת כל הרביעים וכיווני הסיבוב
         for (int quadrant = 0; quadrant < 4; quadrant++) {
@@ -1345,9 +1264,7 @@ public class PentagoAI {
         return null;
     }
 
-    /**
-     * יצירת מודל זמני לסימולציות
-     */
+    // יצירת מודל זמני לסימולציות
     private PentagoModel createTempModel() {
         PentagoModel tempModel = new PentagoModel();
         BitBoardRepresentation originalBoard = model.getBoard();
@@ -1366,9 +1283,7 @@ public class PentagoAI {
         return tempModel;
     }
 
-    /**
-     * ספירת איומים ברמת 4 כלים ברצף
-     */
+    // ספירת איומים ברמת 4 כלים ברצף
     private int countThreats(BitBoardRepresentation board, int player) {
         int threats = 0;
 
@@ -1399,9 +1314,7 @@ public class PentagoAI {
         return threats;
     }
 
-    /**
-     * ספירת איומים בקו ספציפי
-     */
+    // ספירת איומים בקו ספציפי
     private int countThreatsInLine(BitBoardRepresentation board, int startRow, int startCol, int rowInc, int colInc, int player) {
         int playerCount = 0;
         int emptyCount = 0;
@@ -1431,30 +1344,22 @@ public class PentagoAI {
         return (playerCount == 4 && emptyCount == 1) ? 1 : 0;
     }
 
-    /**
-     * קבלת ערך במיקום מסוים בלוח
-     */
+    // קבלת ערך במיקום מסוים בלוח
     private int getPieceAt(int row, int col) {
         return model.getBoard().getPieceAt(row, col);
     }
 
-    /**
-     * הגדרת מספר השחקן
-     */
+    // הגדרת מספר השחקן
     public void setPlayerNumber(int player) {
         this.playerNumber = player;
     }
 
-    /**
-     * איפוס מונה טורנים (למשחק חדש)
-     */
+    // איפוס מונה טורנים (למשחק חדש)
     public void resetTurnCount() {
         this.turnCount = 0;
     }
 
-    /**
-     * עדכון התייחסות למודל חדש
-     */
+    // עדכון התייחסות למודל חדש
     public void setModel(PentagoModel model) {
         this.model = model;
         determineState();
