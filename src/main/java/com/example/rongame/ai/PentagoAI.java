@@ -45,9 +45,6 @@ public class PentagoAI {
     // מפת אסטרטגיות משחק
     private Map<String, List<int[]>> strategicPatterns;
 
-    // מספר המהלכים להסתכל קדימה בניתוח
-    private final int LOOK_AHEAD_DEPTH = 3;
-
     // בנאי
     // מודל המשחק
     public PentagoAI(PentagoModel model) {
