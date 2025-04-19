@@ -32,3 +32,19 @@
     -fx-background-color: #2980b9;
     -fx-cursor: hand;
 }
+
+/* רקע לתפריט הראשי */
+.menu-background {
+    -fx-background-image: url('images/menu_background.png');
+    -fx-background-size: cover;
+    -fx-background-position: center;
+    -fx-background-repeat: no-repeat;
+}
+
+/* רקע למשחק עצמו */
+.game-background {
+    -fx-background-image: url('images/game_background.png');
+    -fx-background-size: cover;
+    -fx-background-position: center;
+    -fx-background-repeat: no-repeat;
+}

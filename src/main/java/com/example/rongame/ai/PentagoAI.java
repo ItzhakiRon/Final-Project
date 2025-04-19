@@ -36,7 +36,7 @@ public class PentagoAI {
     // משתנה לאקראיות
     private Random random;
 
-    // מונה טורנים למעקב אחר התקדמות המשחק
+    // מונה תורים למעקב אחר התקדמות המשחק
     private int turnCount;
 
     // מטריצת משקלים לעמדות על הלוח
@@ -159,7 +159,7 @@ public class PentagoAI {
     }
 
     // ביצוע מהלך של הנחת כלי על הלוח
-    // @return מערך עם [שורה, עמודה] של המהלך
+    // מערך עם [שורה, עמודה] של המהלך
     public int[] makeMove() {
         int[] move;
         turnCount++; // הגדלת מונה התורים בכל מהלך

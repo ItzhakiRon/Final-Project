@@ -22,7 +22,7 @@ public class MainMenuView extends BorderPane {
     public MainMenuView() {
         // עיצוב המסך הראשי
         setPadding(new Insets(20));
-        setStyle("-fx-background-color: linear-gradient(to bottom, #2c3e50, #34495e);");
+        getStyleClass().add("menu-background"); // שימוש בסגנון מוגדר ב-CSS
 
         // יצירת כותרת ראשית
         Label titleLabel = new Label("PENTAGO");

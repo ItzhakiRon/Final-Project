@@ -24,9 +24,13 @@ public class QuadrantView extends StackPane {
     private GamePhase currentPhase;
 
     // הגדרת צבעים
-    private static final Color EMPTY_COLOR = Color.LIGHTGRAY;
+    private static final Color EMPTY_COLOR = Color.rgb(180, 130, 70, 0.4);
     private static final Color BLACK_COLOR = Color.BLACK;
     private static final Color RED_COLOR = Color.RED;
+
+    // צבעים של לוח עץ
+    private static final Color QUADRANT_MEDIUM_WOOD = Color.rgb(180, 132, 52);
+    private static final Color CELL_LIGHT_WOOD = Color.rgb(222, 184, 135);
 
     // הגדרות אנימציה
     private static final double ROTATION_DURATION = 0.5; // חצי שנייה
@@ -35,9 +39,10 @@ public class QuadrantView extends StackPane {
         this.quadrantIndex = index;
         this.currentPhase = GamePhase.PLACE_PIECE;
 
-        // עיצוב הרביע - גבול דק
+        // עיצוב הרביע בצבע עץ - רקע של הרביע יהיה בצבע עץ בינוני
         setPadding(new Insets(5));
-        setStyle("-fx-background-color: #DDDDDD; -fx-border-color: #333333; -fx-border-width: 1px;");
+        setStyle("-fx-background-color: " + toRgbString(QUADRANT_MEDIUM_WOOD) + "; " +
+                "-fx-border-color: #333333; -fx-border-width: 1px;");
 
         // יצירת רשת תאים 3x3 ללא מרווחים
         cellsGrid = new GridPane();
@@ -51,13 +56,16 @@ public class QuadrantView extends StackPane {
             for (int c = 0; c < 3; c++) {
                 StackPane cellPane = new StackPane();
                 cellPane.setPrefSize(60, 60);
-                // גבול דק בצבע כהה להפרדה קלה בין המשבצות
-                cellPane.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #777777; -fx-border-width: 1px;");
 
+                // צביעת המשבצות בצבע עץ בהיר
+                cellPane.setStyle("-fx-background-color: " + toRgbString(CELL_LIGHT_WOOD) + "; " +
+                        "-fx-border-color: #5E4A24; -fx-border-width: 1px;");
+
+                // יצירת עיגול מונמך למשבצת (כמו חריטה בעץ)
                 Circle circle = new Circle(20);
                 circle.setFill(EMPTY_COLOR);
-                circle.setStroke(Color.DARKGRAY);
-                circle.setStrokeWidth(1);
+                circle.setStroke(Color.rgb(90, 70, 40));
+                circle.setStrokeWidth(2);
 
                 cellCircles[r][c] = circle;
                 cellPane.getChildren().add(circle);
@@ -78,6 +86,13 @@ public class QuadrantView extends StackPane {
 
         // הוספת תאי הלוח למרכז
         getChildren().add(cellsGrid);
+    }
+
+    private String toRgbString(Color color) {
+        return String.format("#%02X%02X%02X",
+                (int)(color.getRed() * 255),
+                (int)(color.getGreen() * 255),
+                (int)(color.getBlue() * 255));
     }
 
     /**
@@ -127,7 +142,6 @@ public class QuadrantView extends StackPane {
         }
     }
 
-
     // מעבר בין שלבי המשחק
     public void setGamePhase(GamePhase phase) {
         this.currentPhase = phase;
@@ -149,5 +163,4 @@ public class QuadrantView extends StackPane {
     public int getQuadrantIndex() {
         return this.quadrantIndex;
     }
-
 }

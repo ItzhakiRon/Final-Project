@@ -6,7 +6,7 @@ public class BitBoardRepresentation {
     private long blackBoard;
     private long whiteBoard;
 
-    // קבועים חשובים
+    // קבועים
     private static final int BOARD_SIZE = 6;
     private static final int WINNING_LENGTH = 5;
 

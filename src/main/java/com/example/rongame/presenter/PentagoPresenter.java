@@ -29,7 +29,7 @@ public class PentagoPresenter implements Observer {
         this.isAIEnabled = enableAI;
 
         if (isAIEnabled) {
-            // יצירת מופע של ה-AI עם המודל בלבד (רמת הקושי כבר מובנית בתוך המחלקה)
+            // יצירת מופע של ה-AI עם המודל בלבד
             this.ai = new PentagoAI(model);
             this.ai.setPlayerNumber(1); // ה-AI תמיד משחק כצד שני (אדום)
             this.aiExecutor = Executors.newSingleThreadExecutor();

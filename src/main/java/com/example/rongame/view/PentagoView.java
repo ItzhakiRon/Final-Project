@@ -38,23 +38,25 @@ public class PentagoView extends BorderPane {
         currentPhase = GamePhase.PLACE_PIECE;
         updateInstructions();
 
-        // הגדרת סגנון בסיסי לכל ה-BorderPane
-        setStyle("-fx-background-color: #f0f0f0;");
+        // הגדרת סגנון רקע עם תמונת הרקע
+        getStyleClass().add("game-background");
     }
 
     private void createUI() {
-        // האזור העליון למידע
+        // האזור העליון למלל
         VBox topBox = new VBox(10);
         topBox.setPadding(new Insets(20, 0, 20, 0));
         topBox.setAlignment(Pos.CENTER);
 
         statusLabel = new Label("PENTAGO");
         statusLabel.setFont(Font.font("Arial", 36));
-        statusLabel.setStyle("-fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 3, 0, 0, 1);");
+        // שינוי צבע הטקסט לשחור
+        statusLabel.setStyle("-fx-text-fill: #000000; -fx-font-weight: bold; -fx-effect: dropshadow(gaussian, rgba(255,255,255,0.5), 3, 0, 0, 1);");
 
         instructionLabel = new Label("Player Black, place a piece");
         instructionLabel.setFont(Font.font("Arial", 18));
-        instructionLabel.setStyle("-fx-text-fill: #34495e;");
+        // שינוי צבע הטקסט לשחור
+        instructionLabel.setStyle("-fx-text-fill: #000000;");
 
         topBox.getChildren().addAll(statusLabel, instructionLabel);
         setTop(topBox);
@@ -113,9 +115,7 @@ public class PentagoView extends BorderPane {
         setPadding(new Insets(20));
     }
 
-    /**
-     * יצירת כפתור מעוצב עם צבע מותאם
-     */
+    // יצירת כפתור מעוצב עם צבע מתאים
     private Button createStyledButton(String text, String color) {
         Button button = new Button(text);
 
