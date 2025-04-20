@@ -12,6 +12,10 @@ import java.util.Random;
 // בינה מלאכותית מבוססת FSM
 public class PentagoAI {
 
+    //
+    // 1. קבועים והגדרות
+    //
+
     // קבועים למצבי המשחק
     public enum AIState {
         OFFENSE,         // מצב התקפה - יצירת רצף או השלמת רצף
@@ -23,6 +27,10 @@ public class PentagoAI {
         CONTROL_ROTATION,// מצב שליטה בסיבוב הלוח
         LOOK_AHEAD       // מצב חישוב מהלכים קדימה
     }
+
+    //
+    // 2. שדות המחלקה
+    //
 
     // הפנייה למודל המשחק
     private PentagoModel model;
@@ -45,8 +53,11 @@ public class PentagoAI {
     // מפת אסטרטגיות משחק
     private Map<String, List<int[]>> strategicPatterns;
 
+    //
+    // 3. אתחול ובנייה
+    //
+
     // בנאי
-    // מודל המשחק
     public PentagoAI(PentagoModel model) {
         this.playerNumber = 1; // ברירת מחדל - שחקן 1 (לבן)
         this.random = new Random();
@@ -155,6 +166,10 @@ public class PentagoAI {
         strategicPatterns.put("ring_pattern", ringPattern);
     }
 
+    //
+    // 4. ממשק ציבורי
+    //
+
     // ביצוע מהלך של הנחת כלי על הלוח
     // מערך עם [שורה, עמודה] של המהלך
     public int[] makeMove() {
@@ -261,6 +276,26 @@ public class PentagoAI {
         return new int[]{quadrant, clockwise ? 1 : 0};
     }
 
+    // הגדרת מספר השחקן
+    public void setPlayerNumber(int player) {
+        this.playerNumber = player;
+    }
+
+    // איפוס מונה טורנים (למשחק חדש)
+    public void resetTurnCount() {
+        this.turnCount = 0;
+    }
+
+    // עדכון התייחסות למודל חדש
+    public void setModel(PentagoModel model) {
+        this.model = model;
+        determineState();
+    }
+
+    //
+    // 5. ניהול מצבי משחק
+    //
+
     // עדכון מצב ה-FSM בהתבסס על מצב הלוח הנוכחי
     private void determineState() {
         // אם יש אפשרות לניצחון מיידי, עוברים למצב התקפה
@@ -332,6 +367,112 @@ public class PentagoAI {
         return random.nextInt(10) < (8 + stageProgress) / 2;
     }
 
+    // בדיקה אם יש עמדות אסטרטגיות פנויות במרכז הלוח
+    private boolean hasCentralPositionsAvailable() {
+        // בדיקת המרכז
+        int[][] centerPositions = {{2, 2}, {2, 3}, {3, 2}, {3, 3}};
+        for (int[] pos : centerPositions) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                return true;
+            }
+        }
+
+        // בדיקת מרכזי הרביעים
+        int[][] quadrantCenters = {{1, 1}, {1, 4}, {4, 1}, {4, 4}};
+        for (int[] pos : quadrantCenters) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // בדיקה אם יש איום על פינות חשובות שכדאי לחסום
+    private boolean hasCornersThreat() {
+        int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
+
+        // בדיקה אם היריב כבר תפס פינה
+        for (int[] corner : corners) {
+            if (getPieceAt(corner[0], corner[1]) == 1 - playerNumber) {
+                return true;
+            }
+        }
+
+        // בדיקה אם יש איום על פינה (היריב קרוב לפינה)
+        int[][] cornerApproaches = {
+                {0, 1}, {1, 0}, {1, 1},       // גישה לפינה צפון-מערבית
+                {0, 4}, {1, 4}, {1, 5},       // גישה לפינה צפון-מזרחית
+                {4, 0}, {4, 1}, {5, 1},       // גישה לפינה דרום-מערבית
+                {4, 5}, {4, 4}, {5, 4}        // גישה לפינה דרום-מזרחית
+        };
+
+        for (int[] pos : cornerApproaches) {
+            if (getPieceAt(pos[0], pos[1]) == 1 - playerNumber) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // בדיקה אם יש הזדמנות לדפוסים אסטרטגיים
+    private boolean hasAdvancedPatternOpportunity() {
+        // בדיקת האם יש דפוס שכבר התחלנו
+        for (List<int[]> pattern : strategicPatterns.values()) {
+            int countPlayerPieces = 0;
+            int countEmptySpaces = 0;
+
+            for (int[] pos : pattern) {
+                int piece = getPieceAt(pos[0], pos[1]);
+                if (piece == playerNumber) {
+                    countPlayerPieces++;
+                } else if (piece == -1) {
+                    countEmptySpaces++;
+                }
+            }
+
+            // אם יש לנו לפחות כלי אחד בדפוס ויש מקום להרחיב
+            if (countPlayerPieces > 0 && countEmptySpaces > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // בדיקה אם כדאי להתמקד בשליטה בקצוות
+    private boolean shouldControlEdges() {
+        // בדיקת אחוז כלים בקצוות
+        int edgePieces = 0;
+        int totalEdgePositions = 16; // סה"כ 16 משבצות בקצוות (ללא פינות)
+
+        // בדיקת שורות קצה
+        for (int j = 1; j < 5; j++) {
+            if (getPieceAt(0, j) != -1) edgePieces++;
+            if (getPieceAt(5, j) != -1) edgePieces++;
+        }
+
+        // בדיקת עמודות קצה
+        for (int i = 1; i < 5; i++) {
+            if (getPieceAt(i, 0) != -1) edgePieces++;
+            if (getPieceAt(i, 5) != -1) edgePieces++;
+        }
+
+        // אם פחות מ-50% מהקצוות תפוסים, שווה להתמקד בהם
+        return (edgePieces < totalEdgePositions / 2);
+    }
+
+    // בדיקה אם יש מהלך שיכול להוביל לניצחון מיידי
+    private boolean hasWinningMove(int player) {
+        List<int[]> potentialWins = findPotentialLinesWith(player, 4);
+        return !potentialWins.isEmpty();
+    }
+
+    //
+    // 6. חישוב וניתוח מהלכים מתקדמים
+    //
+
     // חישוב המהלך הטוב ביותר עם חשיבה קדימה
     private int[] calculateBestMoveWithLookAhead() {
         List<int[]> possibleMoves = getAllPossibleMoves();
@@ -388,6 +529,18 @@ public class PentagoAI {
         return score;
     }
 
+    // בדיקה אם מיקום הוא חלק מדפוס אסטרטגי
+    private boolean isPartOfStrategicPattern(int row, int col) {
+        for (List<int[]> pattern : strategicPatterns.values()) {
+            for (int[] pos : pattern) {
+                if (pos[0] == row && pos[1] == col) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // ספירת אפשרויות סיבוב שיובילו לניצחון
     private int countWinningRotations(PentagoModel model) {
         int count = 0;
@@ -411,363 +564,9 @@ public class PentagoAI {
         return count;
     }
 
-    // בדיקה אם מיקום הוא חלק מדפוס אסטרטגי
-    private boolean isPartOfStrategicPattern(int row, int col) {
-        for (List<int[]> pattern : strategicPatterns.values()) {
-            for (int[] pos : pattern) {
-                if (pos[0] == row && pos[1] == col) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    // יצירת מודל זמני על בסיס מודל קיים
-    private PentagoModel createTempModelFrom(PentagoModel sourceModel) {
-        PentagoModel tempModel = new PentagoModel();
-        BitBoardRepresentation sourceBoard = sourceModel.getBoard();
-        BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-        // העתקת מצב הלוח
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                int piece = sourceBoard.getPieceAt(i, j);
-                if (piece != -1) {
-                    tempBoard.placePiece(i * 6 + j, piece);
-                }
-            }
-        }
-
-        return tempModel;
-    }
-
-    // קבלת כל המהלכים האפשריים
-    private List<int[]> getAllPossibleMoves() {
-        List<int[]> moves = new ArrayList<>();
-        BitBoardRepresentation board = model.getBoard();
-
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                if (board.isPositionEmpty(i * 6 + j)) {
-                    moves.add(new int[]{i, j});
-                }
-            }
-        }
-
-        return moves;
-    }
-
-    // מהלך דפוס אסטרטגי משופר
-    private int[] getAdvancedPatternMove() {
-        // בחירת דפוס אסטרטגי מתאים למצב המשחק הנוכחי
-        String bestPatternKey = selectBestPattern();
-
-        if (bestPatternKey != null && strategicPatterns.containsKey(bestPatternKey)) {
-            List<int[]> pattern = strategicPatterns.get(bestPatternKey);
-            List<int[]> availablePositions = new ArrayList<>();
-
-            // בדיקת אילו משבצות בדפוס פנויות
-            for (int[] pos : pattern) {
-                if (getPieceAt(pos[0], pos[1]) == -1) {
-                    availablePositions.add(pos);
-                }
-            }
-
-            // בדיקת אילו משבצות בדפוס כבר תפוסות על ידינו
-            int ownedCount = 0;
-            for (int[] pos : pattern) {
-                if (getPieceAt(pos[0], pos[1]) == playerNumber) {
-                    ownedCount++;
-                }
-            }
-
-            // אם יש משבצות פנויות בדפוס, ויש לנו כבר כלים בדפוס, בחר אחת
-            if (!availablePositions.isEmpty() && ownedCount > 0) {
-                return availablePositions.get(random.nextInt(availablePositions.size()));
-            }
-            // אם אין לנו עדיין כלים בדפוס, בחר בהסתברות גבוהה
-            else if (!availablePositions.isEmpty() && random.nextInt(10) < 8) {
-                return availablePositions.get(random.nextInt(availablePositions.size()));
-            }
-        }
-
-        // אם לא מצאנו דפוס מתאים, נחזור למהלך דפוס רגיל
-        return getPatternMove();
-    }
-
-    // בחירת הדפוס האסטרטגי הטוב ביותר למצב הנוכחי
-    private String selectBestPattern() {
-        Map<String, Integer> patternScores = new HashMap<>();
-
-        // חישוב ציון לכל דפוס
-        for (String patternKey : strategicPatterns.keySet()) {
-            List<int[]> pattern = strategicPatterns.get(patternKey);
-            int score = 0;
-
-            // כמה משבצות בדפוס כבר תפסנו
-            int ownedCount = 0;
-            // כמה משבצות בדפוס היריב תפס
-            int opponentCount = 0;
-            // כמה משבצות בדפוס פנויות
-            int emptyCount = 0;
-
-            for (int[] pos : pattern) {
-                int piece = getPieceAt(pos[0], pos[1]);
-                if (piece == playerNumber) {
-                    ownedCount++;
-                    score += 2;
-                } else if (piece == 1 - playerNumber) {
-                    opponentCount++;
-                    score -= 3;
-                } else {
-                    emptyCount++;
-                    score += 1;
-                }
-            }
-
-            // בונוס אם יש לנו יותר מכלי אחד בדפוס
-            if (ownedCount > 1) {
-                score += ownedCount * 3;
-            }
-
-            // קנס אם היריב שולט בדפוס
-            if (opponentCount > pattern.size() / 3) {
-                score -= 10;
-            }
-
-            // שמירת הציון הסופי
-            patternScores.put(patternKey, score);
-        }
-
-        // בחירת הדפוס בעל הציון הגבוה ביותר
-        String bestPattern = null;
-        int bestScore = Integer.MIN_VALUE;
-
-        for (Map.Entry<String, Integer> entry : patternScores.entrySet()) {
-            if (entry.getValue() > bestScore) {
-                bestScore = entry.getValue();
-                bestPattern = entry.getKey();
-            }
-        }
-
-        // אם כל הדפוסים קיבלו ציון נמוך, נחזיר null
-        if (bestScore < 0) {
-            return null;
-        }
-
-        return bestPattern;
-    }
-
-    // חיפוש סיבוב אסטרטגי משופר
-    private int[] findAdvancedStrategicRotation() {
-        int bestScore = Integer.MIN_VALUE;
-        int[] bestRotation = null;
-
-        // בדיקת כל הרביעים וכיווני הסיבוב
-        for (int quadrant = 0; quadrant < 4; quadrant++) {
-            for (int direction = 0; direction < 2; direction++) {
-                boolean clockwise = direction == 1;
-
-                // יצירת מודל זמני לבדיקת המהלך
-                PentagoModel tempModel = createTempModel();
-                BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-                // סימולציה של סיבוב הרביע
-                tempBoard.rotateQuadrant(quadrant, clockwise);
-
-                // חישוב הערכה מתקדמת של מצב הלוח לאחר הסיבוב
-                int score = evaluateAdvancedRotationScore(tempBoard, quadrant, clockwise);
-
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestRotation = new int[]{quadrant, direction};
-                }
-            }
-        }
-
-        return bestRotation;
-    }
-
-    // הערכה מתקדמת של ציון סיבוב
-    private int evaluateAdvancedRotationScore(BitBoardRepresentation board, int quadrant, boolean clockwise) {
-        int score = 0;
-
-        // בונוס למספר האיומים שלנו (רצף של 3 + משבצת ריקה)
-        score += 5 * countThreats(board, playerNumber);
-
-        // מינוס למספר האיומים של היריב
-        score -= 8 * countThreats(board, 1 - playerNumber);
-
-        // בדיקת דפוסים אסטרטגיים
-        for (String patternKey : strategicPatterns.keySet()) {
-            int patternScore = evaluatePatternAfterRotation(board, strategicPatterns.get(patternKey));
-            score += patternScore;
-        }
-
-        // בדיקת מספר הכלים ברביע ומספר הכלים שלנו לאחר הסיבוב
-        int piecesInQuadrant = countPiecesInQuadrant(board, quadrant);
-        int ourPiecesInQuadrant = countPlayerPiecesInQuadrant(board, quadrant, playerNumber);
-
-        // בונוס אם רוב הכלים ברביע הם שלנו
-        if (piecesInQuadrant > 0 && ourPiecesInQuadrant > piecesInQuadrant / 2) {
-            score += 5;
-        }
-
-        // בדיקת עמדות אסטרטגיות
-        score += evaluateStrategicPositionsAfterRotation(board);
-
-        // מרכיב אקראי קטן
-        score += random.nextInt(3);
-
-        return score;
-    }
-
-    // הערכת ערך של דפוס לאחר סיבוב
-    private int evaluatePatternAfterRotation(BitBoardRepresentation board, List<int[]> pattern) {
-        int score = 0;
-        int ownedCount = 0;
-        int opponentCount = 0;
-
-        for (int[] pos : pattern) {
-            int piece = board.getPieceAt(pos[0], pos[1]);
-            if (piece == playerNumber) {
-                ownedCount++;
-            } else if (piece == 1 - playerNumber) {
-                opponentCount++;
-            }
-        }
-
-        // חישוב ציון בהתאם לשליטה בדפוס
-        if (ownedCount > pattern.size() / 3) {
-            score += ownedCount * 2;
-        }
-
-        if (opponentCount > pattern.size() / 3) {
-            score -= opponentCount * 2;
-        }
-
-        return score;
-    }
-
-    // ספירת כלים ברביע
-    private int countPiecesInQuadrant(BitBoardRepresentation board, int quadrant) {
-        int count = 0;
-        int startRow = (quadrant / 2) * 3;
-        int startCol = (quadrant % 2) * 3;
-
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                if (board.getPieceAt(startRow + i, startCol + j) != -1) {
-                    count++;
-                }
-            }
-        }
-
-        return count;
-    }
-
-    // ספירת כלים של שחקן ספציפי ברביע
-    private int countPlayerPiecesInQuadrant(BitBoardRepresentation board, int quadrant, int player) {
-        int count = 0;
-        int startRow = (quadrant / 2) * 3;
-        int startCol = (quadrant % 2) * 3;
-
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                if (board.getPieceAt(startRow + i, startCol + j) == player) {
-                    count++;
-                }
-            }
-        }
-
-        return count;
-    }
-
-    // הערכת עמדות אסטרטגיות לאחר סיבוב
-    private int evaluateStrategicPositionsAfterRotation(BitBoardRepresentation board) {
-        int score = 0;
-
-        // בדיקת עמדות מרכזיות
-        int[][] strategicSpots = {
-                {2, 2}, {2, 3}, {3, 2}, {3, 3}, // מרכז הלוח
-                {1, 1}, {1, 4}, {4, 1}, {4, 4}  // מרכזי רביעים
-        };
-
-        for (int[] pos : strategicSpots) {
-            int piece = board.getPieceAt(pos[0], pos[1]);
-            if (piece == playerNumber) {
-                score += 3;
-            } else if (piece == 1 - playerNumber) {
-                score -= 2;
-            }
-        }
-
-        return score;
-    }
-
-    // מציאת סיבוב חכם (כאשר אין אופציות ברורות)
-    private int[] findSmartRandomRotation() {
-        // מועדף להשתמש ברביע עם כמות מאוזנת של כלים או ברביע עם כלים של היריב
-        List<Integer> potentialQuadrants = new ArrayList<>();
-        int[] pieceBalance = new int[4]; // ההפרש בין כלים שלנו לכלים של היריב בכל רביע
-
-        for (int q = 0; q < 4; q++) {
-            int ourPieces = countPlayerPiecesInQuadrant(model.getBoard(), q, playerNumber);
-            int theirPieces = countPlayerPiecesInQuadrant(model.getBoard(), q, 1 - playerNumber);
-            pieceBalance[q] = theirPieces - ourPieces;
-
-            // אם יש יותר כלים של היריב ברביע
-            if (pieceBalance[q] > 0) {
-                // הוסף את הרביע פעמיים להגדלת הסיכוי לבחירתו
-                potentialQuadrants.add(q);
-                potentialQuadrants.add(q);
-            } else {
-                // הוסף את הרביע פעם אחת
-                potentialQuadrants.add(q);
-            }
-        }
-
-        // אם אין רביעים מועדפים, השתמש בכל הרביעים
-        if (potentialQuadrants.isEmpty()) {
-            for (int q = 0; q < 4; q++) {
-                potentialQuadrants.add(q);
-            }
-        }
-
-        // בחירת רביע אקראי מתוך הרשימה (עם העדפה לרביעים שיש בהם יותר כלים של היריב)
-        int selectedQuadrant = potentialQuadrants.get(random.nextInt(potentialQuadrants.size()));
-
-        // החלטה אם לסובב עם כיוון השעון או נגדו
-        boolean clockwise = random.nextBoolean();
-
-        return new int[]{selectedQuadrant, clockwise ? 1 : 0};
-    }
-
-    // בדיקת הזדמנות לדפוסים אסטרטגיים
-    private boolean hasAdvancedPatternOpportunity() {
-        // בדיקת האם יש דפוס שכבר התחלנו
-        for (List<int[]> pattern : strategicPatterns.values()) {
-            int countPlayerPieces = 0;
-            int countEmptySpaces = 0;
-
-            for (int[] pos : pattern) {
-                int piece = getPieceAt(pos[0], pos[1]);
-                if (piece == playerNumber) {
-                    countPlayerPieces++;
-                } else if (piece == -1) {
-                    countEmptySpaces++;
-                }
-            }
-
-            // אם יש לנו לפחות כלי אחד בדפוס ויש מקום להרחיב
-            if (countPlayerPieces > 0 && countEmptySpaces > 0) {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    //
+    // 7. אסטרטגיות מהלכי משחק לפי מצבים
+    //
 
     // חיפוש המהלך הטוב ביותר במצב התקפה
     private int[] getOffensiveMove() {
@@ -938,6 +737,107 @@ public class PentagoAI {
         return getStrategicMove();
     }
 
+    // מהלך דפוס אסטרטגי משופר
+    private int[] getAdvancedPatternMove() {
+        // בחירת דפוס אסטרטגי מתאים למצב המשחק הנוכחי
+        String bestPatternKey = selectBestPattern();
+
+        if (bestPatternKey != null && strategicPatterns.containsKey(bestPatternKey)) {
+            List<int[]> pattern = strategicPatterns.get(bestPatternKey);
+            List<int[]> availablePositions = new ArrayList<>();
+
+            // בדיקת אילו משבצות בדפוס פנויות
+            for (int[] pos : pattern) {
+                if (getPieceAt(pos[0], pos[1]) == -1) {
+                    availablePositions.add(pos);
+                }
+            }
+
+            // בדיקת אילו משבצות בדפוס כבר תפוסות על ידינו
+            int ownedCount = 0;
+            for (int[] pos : pattern) {
+                if (getPieceAt(pos[0], pos[1]) == playerNumber) {
+                    ownedCount++;
+                }
+            }
+
+            // אם יש משבצות פנויות בדפוס, ויש לנו כבר כלים בדפוס, בחר אחת
+            if (!availablePositions.isEmpty() && ownedCount > 0) {
+                return availablePositions.get(random.nextInt(availablePositions.size()));
+            }
+            // אם אין לנו עדיין כלים בדפוס, בחר בהסתברות גבוהה
+            else if (!availablePositions.isEmpty() && random.nextInt(10) < 8) {
+                return availablePositions.get(random.nextInt(availablePositions.size()));
+            }
+        }
+
+        // אם לא מצאנו דפוס מתאים, נחזור למהלך דפוס רגיל
+        return getPatternMove();
+    }
+
+    // בחירת הדפוס האסטרטגי הטוב ביותר למצב הנוכחי
+    private String selectBestPattern() {
+        Map<String, Integer> patternScores = new HashMap<>();
+
+        // חישוב ציון לכל דפוס
+        for (String patternKey : strategicPatterns.keySet()) {
+            List<int[]> pattern = strategicPatterns.get(patternKey);
+            int score = 0;
+
+            // כמה משבצות בדפוס כבר תפסנו
+            int ownedCount = 0;
+            // כמה משבצות בדפוס היריב תפס
+            int opponentCount = 0;
+            // כמה משבצות בדפוס פנויות
+            int emptyCount = 0;
+
+            for (int[] pos : pattern) {
+                int piece = getPieceAt(pos[0], pos[1]);
+                if (piece == playerNumber) {
+                    ownedCount++;
+                    score += 2;
+                } else if (piece == 1 - playerNumber) {
+                    opponentCount++;
+                    score -= 3;
+                } else {
+                    emptyCount++;
+                    score += 1;
+                }
+            }
+
+            // בונוס אם יש לנו יותר מכלי אחד בדפוס
+            if (ownedCount > 1) {
+                score += ownedCount * 3;
+            }
+
+            // קנס אם היריב שולט בדפוס
+            if (opponentCount > pattern.size() / 3) {
+                score -= 10;
+            }
+
+            // שמירת הציון הסופי
+            patternScores.put(patternKey, score);
+        }
+
+        // בחירת הדפוס בעל הציון הגבוה ביותר
+        String bestPattern = null;
+        int bestScore = Integer.MIN_VALUE;
+
+        for (Map.Entry<String, Integer> entry : patternScores.entrySet()) {
+            if (entry.getValue() > bestScore) {
+                bestScore = entry.getValue();
+                bestPattern = entry.getKey();
+            }
+        }
+
+        // אם כל הדפוסים קיבלו ציון נמוך, נחזיר null
+        if (bestScore < 0) {
+            return null;
+        }
+
+        return bestPattern;
+    }
+
     // חיפוש מהלך לבניית דפוס אסטרטגי
     private int[] getPatternMove() {
         // דפוס אלכסוני - בניית "X" באמצע הלוח
@@ -1070,82 +970,213 @@ public class PentagoAI {
         return new int[]{0, 0};
     }
 
-    // בדיקה אם יש עמדות אסטרטגיות פנויות במרכז הלוח
-    private boolean hasCentralPositionsAvailable() {
-        // בדיקת המרכז
-        int[][] centerPositions = {{2, 2}, {2, 3}, {3, 2}, {3, 3}};
-        for (int[] pos : centerPositions) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                return true;
+    //
+    // 8. אסטרטגיות סיבוב
+    //
+
+    // חיפוש סיבוב רביע שיוביל לניצחון
+    private int[] findOffensiveRotation() {
+        // תחילה, ננסה מהלכים בכל הרביעים ובשני הכיוונים
+        for (int quadrant = 0; quadrant < 4; quadrant++) {
+            for (int direction = 0; direction < 2; direction++) {
+                boolean clockwise = direction == 1;
+
+                // יצירת מודל זמני לבדיקת המהלך
+                PentagoModel tempModel = createTempModel();
+                BitBoardRepresentation tempBoard = tempModel.getBoard();
+
+                // סימולציה של סיבוב הרביע
+                tempBoard.rotateQuadrant(quadrant, clockwise);
+
+                // בדיקה אם הסיבוב יוצר ניצחון
+                if (tempBoard.hasWinningLine(playerNumber)) {
+                    return new int[]{quadrant, direction};
+                }
             }
         }
 
-        // בדיקת מרכזי הרביעים
-        int[][] quadrantCenters = {{1, 1}, {1, 4}, {4, 1}, {4, 4}};
-        for (int[] pos : quadrantCenters) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                return true;
-            }
-        }
-
-        return false;
+        return null;
     }
 
-    // בדיקה אם יש איום על פינות חשובות שכדאי לחסום
-    private boolean hasCornersThreat() {
-        int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
+    // חיפוש סיבוב רביע שימנע ניצחון של היריב
+    private int[] findDefensiveRotation() {
+        // בדיקת כל הרביעים וכיווני הסיבוב
+        for (int quadrant = 0; quadrant < 4; quadrant++) {
+            for (int direction = 0; direction < 2; direction++) {
+                boolean clockwise = direction == 1;
 
-        // בדיקה אם היריב כבר תפס פינה
-        for (int[] corner : corners) {
-            if (getPieceAt(corner[0], corner[1]) == 1 - playerNumber) {
-                return true;
+                // יצירת מודל זמני לבדיקת המהלך
+                PentagoModel tempModel = createTempModel();
+                BitBoardRepresentation tempBoard = tempModel.getBoard();
+
+                // סימולציה של סיבוב הרביע
+                tempBoard.rotateQuadrant(quadrant, clockwise);
+
+                // בדיקה אם הסיבוב מונע ניצחון של היריב
+                if (!tempBoard.hasWinningLine(1 - playerNumber) &&
+                        countThreats(tempBoard, 1 - playerNumber) < countThreats(model.getBoard(), 1 - playerNumber)) {
+                    return new int[]{quadrant, direction};
+                }
             }
         }
 
-        // בדיקה אם יש איום על פינה (היריב קרוב לפינה)
-        int[][] cornerApproaches = {
-                {0, 1}, {1, 0}, {1, 1},       // גישה לפינה צפון-מערבית
-                {0, 4}, {1, 4}, {1, 5},       // גישה לפינה צפון-מזרחית
-                {4, 0}, {4, 1}, {5, 1},       // גישה לפינה דרום-מערבית
-                {4, 5}, {4, 4}, {5, 4}        // גישה לפינה דרום-מזרחית
+        return null;
+    }
+
+    // חיפוש סיבוב אסטרטגי משופר
+    private int[] findAdvancedStrategicRotation() {
+        int bestScore = Integer.MIN_VALUE;
+        int[] bestRotation = null;
+
+        // בדיקת כל הרביעים וכיווני הסיבוב
+        for (int quadrant = 0; quadrant < 4; quadrant++) {
+            for (int direction = 0; direction < 2; direction++) {
+                boolean clockwise = direction == 1;
+
+                // יצירת מודל זמני לבדיקת המהלך
+                PentagoModel tempModel = createTempModel();
+                BitBoardRepresentation tempBoard = tempModel.getBoard();
+
+                // סימולציה של סיבוב הרביע
+                tempBoard.rotateQuadrant(quadrant, clockwise);
+
+                // חישוב הערכה מתקדמת של מצב הלוח לאחר הסיבוב
+                int score = evaluateAdvancedRotationScore(tempBoard, quadrant, clockwise);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestRotation = new int[]{quadrant, direction};
+                }
+            }
+        }
+
+        return bestRotation;
+    }
+
+    // הערכה מתקדמת של ציון סיבוב
+    private int evaluateAdvancedRotationScore(BitBoardRepresentation board, int quadrant, boolean clockwise) {
+        int score = 0;
+
+        // בונוס למספר האיומים שלנו (רצף של 3 + משבצת ריקה)
+        score += 5 * countThreats(board, playerNumber);
+
+        // מינוס למספר האיומים של היריב
+        score -= 8 * countThreats(board, 1 - playerNumber);
+
+        // בדיקת דפוסים אסטרטגיים
+        for (String patternKey : strategicPatterns.keySet()) {
+            int patternScore = evaluatePatternAfterRotation(board, strategicPatterns.get(patternKey));
+            score += patternScore;
+        }
+
+        // בדיקת מספר הכלים ברביע ומספר הכלים שלנו לאחר הסיבוב
+        int piecesInQuadrant = countPiecesInQuadrant(board, quadrant);
+        int ourPiecesInQuadrant = countPlayerPiecesInQuadrant(board, quadrant, playerNumber);
+
+        // בונוס אם רוב הכלים ברביע הם שלנו
+        if (piecesInQuadrant > 0 && ourPiecesInQuadrant > piecesInQuadrant / 2) {
+            score += 5;
+        }
+
+        // בדיקת עמדות אסטרטגיות
+        score += evaluateStrategicPositionsAfterRotation(board);
+
+        // מרכיב אקראי קטן
+        score += random.nextInt(3);
+
+        return score;
+    }
+
+    // הערכת ערך של דפוס לאחר סיבוב
+    private int evaluatePatternAfterRotation(BitBoardRepresentation board, List<int[]> pattern) {
+        int score = 0;
+        int ownedCount = 0;
+        int opponentCount = 0;
+
+        for (int[] pos : pattern) {
+            int piece = board.getPieceAt(pos[0], pos[1]);
+            if (piece == playerNumber) {
+                ownedCount++;
+            } else if (piece == 1 - playerNumber) {
+                opponentCount++;
+            }
+        }
+
+        // חישוב ציון בהתאם לשליטה בדפוס
+        if (ownedCount > pattern.size() / 3) {
+            score += ownedCount * 2;
+        }
+
+        if (opponentCount > pattern.size() / 3) {
+            score -= opponentCount * 2;
+        }
+
+        return score;
+    }
+
+    // הערכת עמדות אסטרטגיות לאחר סיבוב
+    private int evaluateStrategicPositionsAfterRotation(BitBoardRepresentation board) {
+        int score = 0;
+
+        // בדיקת עמדות מרכזיות
+        int[][] strategicSpots = {
+                {2, 2}, {2, 3}, {3, 2}, {3, 3}, // מרכז הלוח
+                {1, 1}, {1, 4}, {4, 1}, {4, 4}  // מרכזי רביעים
         };
 
-        for (int[] pos : cornerApproaches) {
-            if (getPieceAt(pos[0], pos[1]) == 1 - playerNumber) {
-                return true;
+        for (int[] pos : strategicSpots) {
+            int piece = board.getPieceAt(pos[0], pos[1]);
+            if (piece == playerNumber) {
+                score += 3;
+            } else if (piece == 1 - playerNumber) {
+                score -= 2;
             }
         }
 
-        return false;
+        return score;
     }
 
-    // בדיקה אם כדאי להתמקד בשליטה בקצוות
-    private boolean shouldControlEdges() {
-        // בדיקת אחוז כלים בקצוות
-        int edgePieces = 0;
-        int totalEdgePositions = 16; // סה"כ 16 משבצות בקצוות (ללא פינות)
+    // מציאת סיבוב חכם (כאשר אין אופציות ברורות)
+    private int[] findSmartRandomRotation() {
+        // מועדף להשתמש ברביע עם כמות מאוזנת של כלים או ברביע עם כלים של היריב
+        List<Integer> potentialQuadrants = new ArrayList<>();
+        int[] pieceBalance = new int[4]; // ההפרש בין כלים שלנו לכלים של היריב בכל רביע
 
-        // בדיקת שורות קצה
-        for (int j = 1; j < 5; j++) {
-            if (getPieceAt(0, j) != -1) edgePieces++;
-            if (getPieceAt(5, j) != -1) edgePieces++;
+        for (int q = 0; q < 4; q++) {
+            int ourPieces = countPlayerPiecesInQuadrant(model.getBoard(), q, playerNumber);
+            int theirPieces = countPlayerPiecesInQuadrant(model.getBoard(), q, 1 - playerNumber);
+            pieceBalance[q] = theirPieces - ourPieces;
+
+            // אם יש יותר כלים של היריב ברביע
+            if (pieceBalance[q] > 0) {
+                // הוסף את הרביע פעמיים להגדלת הסיכוי לבחירתו
+                potentialQuadrants.add(q);
+                potentialQuadrants.add(q);
+            } else {
+                // הוסף את הרביע פעם אחת
+                potentialQuadrants.add(q);
+            }
         }
 
-        // בדיקת עמודות קצה
-        for (int i = 1; i < 5; i++) {
-            if (getPieceAt(i, 0) != -1) edgePieces++;
-            if (getPieceAt(i, 5) != -1) edgePieces++;
+        // אם אין רביעים מועדפים, השתמש בכל הרביעים
+        if (potentialQuadrants.isEmpty()) {
+            for (int q = 0; q < 4; q++) {
+                potentialQuadrants.add(q);
+            }
         }
 
-        // אם פחות מ-50% מהקצוות תפוסים, שווה להתמקד בהם
-        return (edgePieces < totalEdgePositions / 2);
+        // בחירת רביע אקראי מתוך הרשימה (עם העדפה לרביעים שיש בהם יותר כלים של היריב)
+        int selectedQuadrant = potentialQuadrants.get(random.nextInt(potentialQuadrants.size()));
+
+        // החלטה אם לסובב עם כיוון השעון או נגדו
+        boolean clockwise = random.nextBoolean();
+
+        return new int[]{selectedQuadrant, clockwise ? 1 : 0};
     }
 
-    // בדיקה אם יש מהלך שיכול להוביל לניצחון מיידי
-    private boolean hasWinningMove(int player) {
-        List<int[]> potentialWins = findPotentialLinesWith(player, 4);
-        return !potentialWins.isEmpty();
-    }
+    //
+    // 9. פונקציות עזר לניתוח הלוח
+    //
 
     // מציאת מהלכים שיכולים להשלים רצף בגודל מסוים
     private List<int[]> findPotentialLinesWith(int player, int lineSize) {
@@ -1212,74 +1243,6 @@ public class PentagoAI {
         }
     }
 
-    // חיפוש סיבוב רביע שיוביל לניצחון
-    private int[] findOffensiveRotation() {
-        // תחילה, ננסה מהלכים בכל הרביעים ובשני הכיוונים
-        for (int quadrant = 0; quadrant < 4; quadrant++) {
-            for (int direction = 0; direction < 2; direction++) {
-                boolean clockwise = direction == 1;
-
-                // יצירת מודל זמני לבדיקת המהלך
-                PentagoModel tempModel = createTempModel();
-                BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-                // סימולציה של סיבוב הרביע
-                tempBoard.rotateQuadrant(quadrant, clockwise);
-
-                // בדיקה אם הסיבוב יוצר ניצחון
-                if (tempBoard.hasWinningLine(playerNumber)) {
-                    return new int[]{quadrant, direction};
-                }
-            }
-        }
-
-        return null;
-    }
-
-    // חיפוש סיבוב רביע שימנע ניצחון של היריב
-    private int[] findDefensiveRotation() {
-        // בדיקת כל הרביעים וכיווני הסיבוב
-        for (int quadrant = 0; quadrant < 4; quadrant++) {
-            for (int direction = 0; direction < 2; direction++) {
-                boolean clockwise = direction == 1;
-
-                // יצירת מודל זמני לבדיקת המהלך
-                PentagoModel tempModel = createTempModel();
-                BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-                // סימולציה של סיבוב הרביע
-                tempBoard.rotateQuadrant(quadrant, clockwise);
-
-                // בדיקה אם הסיבוב מונע ניצחון של היריב
-                if (!tempBoard.hasWinningLine(1 - playerNumber) &&
-                        countThreats(tempBoard, 1 - playerNumber) < countThreats(model.getBoard(), 1 - playerNumber)) {
-                    return new int[]{quadrant, direction};
-                }
-            }
-        }
-
-        return null;
-    }
-
-    // יצירת מודל זמני לסימולציות
-    private PentagoModel createTempModel() {
-        PentagoModel tempModel = new PentagoModel();
-        BitBoardRepresentation originalBoard = model.getBoard();
-        BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-        // העתקת מצב הלוח
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                int piece = originalBoard.getPieceAt(i, j);
-                if (piece != -1) {
-                    tempBoard.placePiece(i * 6 + j, piece);
-                }
-            }
-        }
-
-        return tempModel;
-    }
-
     // ספירת איומים ברמת 4 כלים ברצף
     private int countThreats(BitBoardRepresentation board, int player) {
         int threats = 0;
@@ -1341,24 +1304,104 @@ public class PentagoAI {
         return (playerCount == 4 && emptyCount == 1) ? 1 : 0;
     }
 
+    //
+    // 10. פונקציות עזר לספירת כלים ברביעים
+    //
+
+    // ספירת כלים ברביע
+    private int countPiecesInQuadrant(BitBoardRepresentation board, int quadrant) {
+        int count = 0;
+        int startRow = (quadrant / 2) * 3;
+        int startCol = (quadrant % 2) * 3;
+
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                if (board.getPieceAt(startRow + i, startCol + j) != -1) {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    // ספירת כלים של שחקן ספציפי ברביע
+    private int countPlayerPiecesInQuadrant(BitBoardRepresentation board, int quadrant, int player) {
+        int count = 0;
+        int startRow = (quadrant / 2) * 3;
+        int startCol = (quadrant % 2) * 3;
+
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                if (board.getPieceAt(startRow + i, startCol + j) == player) {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    //
+    // 11. פונקציות עזר ותשתית
+    //
+
+    // קבלת כל המהלכים האפשריים
+    private List<int[]> getAllPossibleMoves() {
+        List<int[]> moves = new ArrayList<>();
+        BitBoardRepresentation board = model.getBoard();
+
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 6; j++) {
+                if (board.isPositionEmpty(i * 6 + j)) {
+                    moves.add(new int[]{i, j});
+                }
+            }
+        }
+
+        return moves;
+    }
+
+    // יצירת מודל זמני לסימולציות
+    private PentagoModel createTempModel() {
+        PentagoModel tempModel = new PentagoModel();
+        BitBoardRepresentation originalBoard = model.getBoard();
+        BitBoardRepresentation tempBoard = tempModel.getBoard();
+
+        // העתקת מצב הלוח
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 6; j++) {
+                int piece = originalBoard.getPieceAt(i, j);
+                if (piece != -1) {
+                    tempBoard.placePiece(i * 6 + j, piece);
+                }
+            }
+        }
+
+        return tempModel;
+    }
+
+    // יצירת מודל זמני על בסיס מודל קיים
+    private PentagoModel createTempModelFrom(PentagoModel sourceModel) {
+        PentagoModel tempModel = new PentagoModel();
+        BitBoardRepresentation sourceBoard = sourceModel.getBoard();
+        BitBoardRepresentation tempBoard = tempModel.getBoard();
+
+        // העתקת מצב הלוח
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 6; j++) {
+                int piece = sourceBoard.getPieceAt(i, j);
+                if (piece != -1) {
+                    tempBoard.placePiece(i * 6 + j, piece);
+                }
+            }
+        }
+
+        return tempModel;
+    }
+
     // קבלת ערך במיקום מסוים בלוח
     private int getPieceAt(int row, int col) {
         return model.getBoard().getPieceAt(row, col);
-    }
-
-    // הגדרת מספר השחקן
-    public void setPlayerNumber(int player) {
-        this.playerNumber = player;
-    }
-
-    // איפוס מונה טורנים (למשחק חדש)
-    public void resetTurnCount() {
-        this.turnCount = 0;
-    }
-
-    // עדכון התייחסות למודל חדש
-    public void setModel(PentagoModel model) {
-        this.model = model;
-        determineState();
     }
 }
