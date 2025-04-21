@@ -1,0 +1,270 @@
+@startuml
+class com.example.rongame.model.BitBoardRepresentation {
+- long blackBoard
+- long whiteBoard
+- {static} int BOARD_SIZE
+- {static} int WINNING_LENGTH
++ boolean isPositionEmpty(int)
++ void placePiece(int,int)
++ int getPieceAt(int,int)
++ void rotateQuadrant(int,boolean)
++ boolean hasWinningLine(int)
++ boolean isBoardFull()
+}
+
+
+class com.example.rongame.view.QuadrantView {
+- int quadrantIndex
+- GridPane cellsGrid
+- Circle[][] cellCircles
+- CellClickListener cellClickListener
+- QuadrantRotationListener rotationListener
+- GamePhase currentPhase
+- {static} Color EMPTY_COLOR
+- {static} Color BLACK_COLOR
+- {static} Color RED_COLOR
+- {static} Color QUADRANT_MEDIUM_WOOD
+- {static} Color CELL_LIGHT_WOOD
+- {static} double ROTATION_DURATION
+- String toRgbString(Color)
++ void animateRotation(boolean,Runnable)
++ void updateCell(int,int,int)
++ void setGamePhase(GamePhase)
++ void setCellClickListener(CellClickListener)
++ void setQuadrantRotationListener(QuadrantRotationListener)
++ QuadrantRotationListener getQuadrantRotationListener()
++ int getQuadrantIndex()
+}
+
+
+class com.example.rongame.presenter.PentagoPresenter {
+- PentagoModel model
+- PentagoView view
+- PentagoAI ai
+- boolean isAIEnabled
+- boolean isAIThinking
+- ExecutorService aiExecutor
+- void setupViewListeners()
+- void handleCellClick(int,int)
+- void handleQuadrantRotation(int,boolean)
+- void updateGameStatus()
+- void updateViewFromModel()
++ void update(Observable,Object)
+- void makeAIMove()
++ void stopAI()
+}
+
+
+class com.example.rongame.view.PentagoView {
+- BoardView boardView
+- Label statusLabel
+- Label instructionLabel
+- Button newGameButton
+- Button backToMenuButton
+- GamePhase currentPhase
+- GameMode gameMode
+- void createUI()
+- Button createStyledButton(String,String)
+- String getDarkerColor(String)
++ void updateInstructions()
++ void updateGameStatus(String)
++ void setGamePhase(GamePhase)
++ void updateBoard(int[][])
++ void setCurrentPlayer(int)
++ void setGameMode(GameMode)
++ BoardView getBoardView()
++ Button getNewGameButton()
++ Button getBackToMenuButton()
++ GamePhase getCurrentPhase()
++ GameMode getGameMode()
+}
+
+
+enum com.example.rongame.view.GamePhase {
++  PLACE_PIECE
++  ROTATE_QUADRANT
++  GAME_OVER
+}
+
+enum com.example.rongame.view.GameMode {
++  HUMAN
++  AI
+}
+
+class com.example.rongame.PentagoApp {
+- Stage primaryStage
+- Scene menuScene
+- Scene gameScene
+- MainMenuView menuView
++ void start(Stage)
+- void startGame(GameMode)
++ {static} void main(String[])
+}
+
+
+class com.example.rongame.view.MainMenuView {
+- Button playAgainstPlayerButton
+- Button playAgainstAIButton
+- GameModeListener gameModeListener
+- Button createMenuButton(String)
++ void setGameModeListener(GameModeListener)
+}
+
+
+enum com.example.rongame.view.GameMode {
++  PLAYER_VS_PLAYER
++  PLAYER_VS_AI
+}
+
+interface com.example.rongame.view.MainMenuView$GameModeListener {
+~ void onGameModeSelected(GameMode)
+}
+
+class com.example.rongame.ai.PentagoAI {
+- PentagoModel model
+- AIState currentState
+- int playerNumber
+- Random random
+- int turnCount
+- int[][] positionWeights
+- Map<String,List<int[]>> strategicPatterns
+- void initializePositionWeights()
+- void initializeStrategicPatterns()
++ int[] makeMove()
++ int[] makeRotation()
++ void setPlayerNumber(int)
++ void resetTurnCount()
++ void setModel(PentagoModel)
+- void determineState()
+- boolean shouldUseLookAhead()
+- boolean hasCentralPositionsAvailable()
+- boolean hasCornersThreat()
+- boolean hasAdvancedPatternOpportunity()
+- boolean shouldControlEdges()
+- boolean hasWinningMove(int)
+- int[] calculateBestMoveWithLookAhead()
+- int evaluateMoveScore(int,int)
+- boolean isPartOfStrategicPattern(int,int)
+- int countWinningRotations(PentagoModel)
+- int[] getOffensiveMove()
+- int[] getDefensiveMove()
+- int[] getStrategicMove()
+- int[] getEdgeControlMove()
+- int[] getCornerBlockMove()
+- int[] getAdvancedPatternMove()
+- String selectBestPattern()
+- int[] getPatternMove()
+- int[] getRotationControlMove()
+- int[] getRandomMove()
+- int[] findOffensiveRotation()
+- int[] findDefensiveRotation()
+- int[] findAdvancedStrategicRotation()
+- int evaluateAdvancedRotationScore(BitBoardRepresentation,int,boolean)
+- int evaluatePatternAfterRotation(BitBoardRepresentation,List<int[]>)
+- int evaluateStrategicPositionsAfterRotation(BitBoardRepresentation)
+- int[] findSmartRandomRotation()
+- List<int[]> findPotentialLinesWith(int,int)
+- void checkPotentialLine(List<int[]>,int,int,int,int,int,int)
+- int countThreats(BitBoardRepresentation,int)
+- int countThreatsInLine(BitBoardRepresentation,int,int,int,int,int)
+- int countPiecesInQuadrant(BitBoardRepresentation,int)
+- int countPlayerPiecesInQuadrant(BitBoardRepresentation,int,int)
+- List<int[]> getAllPossibleMoves()
+- PentagoModel createTempModel()
+- PentagoModel createTempModelFrom(PentagoModel)
+- int getPieceAt(int,int)
+}
+
+
+enum com.example.rongame.ai.AIState {
++  OFFENSE
++  DEFENSE
++  CONTROL_CENTER
++  CONTROL_EDGES
++  BLOCK_CORNERS
++  BUILD_PATTERN
++  CONTROL_ROTATION
++  LOOK_AHEAD
+}
+
+class com.example.rongame.view.BoardView {
+- GridPane boardGrid
+- QuadrantView[] quadrants
+- int currentPlayer
+- GamePhase currentPhase
+- Button[] rotationButtons
+- StackPane boardContainer
+- Pane buttonOverlay
+- {static} double BOARD_TOTAL_WIDTH
+- {static} double BOARD_TOTAL_HEIGHT
+- {static} double BOARD_MARGIN
+- {static} double QUADRANT_GAP
+- {static} Color BOARD_DARK_WOOD
+- {static} Color QUADRANT_MEDIUM_WOOD
+- {static} Color CELL_LIGHT_WOOD
+- {static} String BUTTON_BG_COLOR
+- {static} String BUTTON_TEXT_COLOR
+- {static} String BUTTON_HOVER_BG_COLOR
+- boolean isAIRotating
+- void createRotationButtons()
+- void layoutButtons()
+- Button createArrowButton(String,int,boolean)
+- void updateRotationButtonsVisibility()
++ void updateBoard(int[][])
++ void setGamePhase(GamePhase)
++ void setCurrentPlayer(int)
++ void setCellClickListener(CellClickListener)
++ void setQuadrantRotationListener(QuadrantRotationListener)
++ int getCurrentPlayer()
++ GamePhase getCurrentPhase()
++ void hideRotationButtons()
++ void animateRotationWithoutButtons(int,boolean,Runnable)
++ void setAIRotating(boolean)
+}
+
+
+interface com.example.rongame.view.BoardView$CellClickListener {
+~ void onCellClick(int,int,int)
+}
+
+interface com.example.rongame.view.BoardView$QuadrantRotationListener {
+~ void onQuadrantRotation(int,boolean)
+}
+
+class com.example.rongame.model.PentagoModel {
+- BitBoardRepresentation board
+- int currentPlayer
+- GameState gameState
+- int lastMove
+- int lastRotatedQuadrant
+- boolean lastRotationClockwise
++ boolean makeMove(int,int)
++ void rotateQuadrant(int,boolean)
+- void checkGameState()
++ BitBoardRepresentation getBoard()
++ int getCurrentPlayer()
++ GameState getGameState()
++ void resetGame()
+}
+
+
+enum com.example.rongame.model.GameState {
++  IN_PROGRESS
++  WHITE_WINS
++  BLACK_WINS
++  DRAW
+}
+
+
+
+javafx.scene.layout.StackPane <|-- com.example.rongame.view.QuadrantView
+java.util.Observer <|.. com.example.rongame.presenter.PentagoPresenter
+javafx.scene.layout.BorderPane <|-- com.example.rongame.view.PentagoView
+javafx.application.Application <|-- com.example.rongame.PentagoApp
+javafx.scene.layout.BorderPane <|-- com.example.rongame.view.MainMenuView
+com.example.rongame.view.MainMenuView +.. com.example.rongame.view.MainMenuView$GameModeListener
+javafx.scene.layout.StackPane <|-- com.example.rongame.view.BoardView
+com.example.rongame.view.BoardView +.. com.example.rongame.view.BoardView$CellClickListener
+com.example.rongame.view.BoardView +.. com.example.rongame.view.BoardView$QuadrantRotationListener
+java.util.Observable <|-- com.example.rongame.model.PentagoModel
+@enduml
