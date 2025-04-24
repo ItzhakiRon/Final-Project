@@ -11,7 +11,6 @@ import java.util.Random;
 
 /**
  * בינה מלאכותית מתקדמת למשחק פנטגו
- * מבוססת על מכונת מצבים סופית (FSM), זיהוי תבניות וחישוב היוריסטי
  */
 public class PentagoAI {
 
@@ -36,7 +35,6 @@ public class PentagoAI {
     private static final int QUADRANT_SIZE = 3;
 
     // משקלים להערכת עמדה
-    private static final int WIN_SCORE = 10000;
     private static final int LINE_4_SCORE = 1000;
     private static final int LINE_3_SCORE = 100;
     private static final int LINE_2_SCORE = 10;
