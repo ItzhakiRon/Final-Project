@@ -9,7 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-// בינה מלאכותית מבוססת FSM
+/**
+ * בינה מלאכותית מתקדמת למשחק פנטגו
+ * מבוססת על מכונת מצבים סופית (FSM), זיהוי תבניות וחישוב היוריסטי
+ */
 public class PentagoAI {
 
     //
@@ -20,13 +23,23 @@ public class PentagoAI {
     public enum AIState {
         OFFENSE,         // מצב התקפה - יצירת רצף או השלמת רצף
         DEFENSE,         // מצב הגנה - חסימת האויב
-        CONTROL_CENTER,  // מצב שליטה במרכז - תפיסת עמדות חשובות
-        CONTROL_EDGES,   // מצב שליטה בקצוות הלוח
-        BLOCK_CORNERS,   // מצב חסימת פינות אסטרטגיות
-        BUILD_PATTERN,   // מצב בניית דפוס אסטרטגי
-        CONTROL_ROTATION,// מצב שליטה בסיבוב הלוח
-        LOOK_AHEAD       // מצב חישוב מהלכים קדימה
+        CONTROL_CENTER,  // מצב שליטה במרכז - תפיסת עמדות מרכזיות
+        CONTROL_CORNERS, // מצב שליטה בפינות - תפיסת פינות אסטרטגיות
+        BUILD_PATTERN    // מצב בניית דפוס אסטרטגי
     }
+
+    // מספר המשבצות בשורה לניצחון
+    private static final int WIN_LENGTH = 5;
+
+    // משקלים להערכת עמדה
+    private static final int WIN_SCORE = 10000;
+    private static final int LINE_4_SCORE = 1000;
+    private static final int LINE_3_SCORE = 100;
+    private static final int LINE_2_SCORE = 10;
+    private static final int BLOCK_SCORE = 150;
+    private static final int CENTER_SCORE = 8;
+    private static final int CORNER_SCORE = 5;
+    private static final int EDGE_SCORE = 2;
 
     //
     // 2. שדות המחלקה
@@ -41,6 +54,9 @@ public class PentagoAI {
     // מספר השחקן (0 או 1)
     private int playerNumber;
 
+    // היריב של ה-AI
+    private int opponentNumber;
+
     // משתנה לאקראיות
     private Random random;
 
@@ -50,946 +66,956 @@ public class PentagoAI {
     // מטריצת משקלים לעמדות על הלוח
     private int[][] positionWeights;
 
-    // מפת אסטרטגיות משחק
+    // מפת אסטרטגיות משחק - דפוסים אסטרטגיים
     private Map<String, List<int[]>> strategicPatterns;
 
+    // תבניות מנצחות פוטנציאליות שזוהו
+    private List<PatternThreat> currentThreats;
+
     //
-    // 3. אתחול ובנייה
+    // 3. מחלקות פנימיות
     //
 
-    // בנאי
+    /**
+     * מחלקה המייצגת תבנית או איום על הלוח
+     */
+    private class PatternThreat {
+        int player;            // מי יוצר את האיום (0 או 1)
+        int count;             // כמה כלים יש ברצף
+        List<int[]> positions; // מיקומי הכלים ברצף
+        List<int[]> openEnds;  // מיקומים פנויים להשלמת הרצף
+        int direction;         // כיוון הרצף (שורה=0, עמודה=1, אלכסון=2, אלכסון נגדי=3)
+        int score;             // ציון האיום
+
+        PatternThreat(int player, int count) {
+            this.player = player;
+            this.count = count;
+            this.positions = new ArrayList<>();
+            this.openEnds = new ArrayList<>();
+            this.score = 0;
+        }
+    }
+
+    /**
+     * מחלקה המייצגת מהלך אפשרי עם הערכת ערך
+     */
+    private class MoveEvaluation implements Comparable<MoveEvaluation> {
+        int[] move;
+        int score;
+
+        MoveEvaluation(int[] move, int score) {
+            this.move = move;
+            this.score = score;
+        }
+
+        @Override
+        public int compareTo(MoveEvaluation other) {
+            return Integer.compare(other.score, this.score); // סידור בסדר יורד
+        }
+    }
+
+    //
+    // 4. בנאי ואתחול
+    //
+
+    /**
+     * בנאי למחלקת PentagoAI
+     * @param model מודל המשחק
+     */
     public PentagoAI(PentagoModel model) {
         this.playerNumber = 1; // ברירת מחדל - שחקן 1 (לבן)
+        this.opponentNumber = 0;
         this.random = new Random();
         this.model = model;
         this.currentState = AIState.CONTROL_CENTER; // מצב התחלתי
         this.turnCount = 0;
+        this.currentThreats = new ArrayList<>();
 
         initializePositionWeights();
         initializeStrategicPatterns();
     }
 
-    // אתחול מטריצת משקלים לעמדות על הלוח
+    /**
+     * אתחול מטריצת משקלים לעמדות על הלוח
+     */
     private void initializePositionWeights() {
         positionWeights = new int[6][6];
 
-        // הגדרת משקלים שונים לאזורים שונים בלוח
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                // חישוב מרחק ממרכז הלוח
-                double rowDistance = Math.min(Math.abs(i - 2), Math.abs(i - 3));
-                double colDistance = Math.min(Math.abs(j - 2), Math.abs(j - 3));
-                double centerDistance = Math.max(rowDistance, colDistance);
+        // מרכז הלוח - בעל הערך הגבוה ביותר
+        positionWeights[2][2] = CENTER_SCORE + 2;
+        positionWeights[2][3] = CENTER_SCORE + 2;
+        positionWeights[3][2] = CENTER_SCORE + 2;
+        positionWeights[3][3] = CENTER_SCORE + 2;
 
-                // קביעת משקל בסיסי לפי המרחק מהמרכז
-                if (centerDistance < 1) {
-                    // מרכז הלוח - ערך מקסימלי
-                    positionWeights[i][j] = 8;
-                } else if (centerDistance < 2) {
-                    // טבעת פנימית סביב המרכז
-                    positionWeights[i][j] = 6;
-                } else if (centerDistance < 3) {
-                    // טבעת חיצונית
-                    positionWeights[i][j] = 4;
-                } else {
-                    // הקצוות והפינות
-                    positionWeights[i][j] = 2;
-                }
+        // משקלים גבוהים למרכזי הרביעים
+        positionWeights[1][1] = CENTER_SCORE;
+        positionWeights[1][4] = CENTER_SCORE;
+        positionWeights[4][1] = CENTER_SCORE;
+        positionWeights[4][4] = CENTER_SCORE;
 
-                // הגדלת הערך של נקודות מפתח
-                if ((i == 1 && j == 1) || (i == 1 && j == 4) ||
-                        (i == 4 && j == 1) || (i == 4 && j == 4)) {
-                    // מרכז כל רביע
-                    positionWeights[i][j] += 2;
-                }
+        // פינות
+        positionWeights[0][0] = CORNER_SCORE;
+        positionWeights[0][5] = CORNER_SCORE;
+        positionWeights[5][0] = CORNER_SCORE;
+        positionWeights[5][5] = CORNER_SCORE;
 
-                // נקודות אסטרטגיות נוספות - חיבורים בין רביעים
-                if ((i == 2 && j == 1) || (i == 3 && j == 1) ||
-                        (i == 2 && j == 4) || (i == 3 && j == 4) ||
-                        (i == 1 && j == 2) || (i == 1 && j == 3) ||
-                        (i == 4 && j == 2) || (i == 4 && j == 3)) {
-                    positionWeights[i][j] += 1;
+        // נקודות חיבור בין רביעים
+        positionWeights[2][0] = EDGE_SCORE + 2;
+        positionWeights[3][0] = EDGE_SCORE + 2;
+        positionWeights[2][5] = EDGE_SCORE + 2;
+        positionWeights[3][5] = EDGE_SCORE + 2;
+        positionWeights[0][2] = EDGE_SCORE + 2;
+        positionWeights[0][3] = EDGE_SCORE + 2;
+        positionWeights[5][2] = EDGE_SCORE + 2;
+        positionWeights[5][3] = EDGE_SCORE + 2;
+
+        // שאר הקצוות
+        for (int i = 1; i < 5; i++) {
+            if (positionWeights[0][i] == 0) positionWeights[0][i] = EDGE_SCORE;
+            if (positionWeights[5][i] == 0) positionWeights[5][i] = EDGE_SCORE;
+            if (positionWeights[i][0] == 0) positionWeights[i][0] = EDGE_SCORE;
+            if (positionWeights[i][5] == 0) positionWeights[i][5] = EDGE_SCORE;
+        }
+
+        // מילוי שאר הלוח בערכים הדרגתיים
+        for (int i = 1; i < 5; i++) {
+            for (int j = 1; j < 5; j++) {
+                if (positionWeights[i][j] == 0) {
+                    // מרחק ממרכז הלוח
+                    double distanceFromCenter = Math.sqrt(Math.pow((i - 2.5), 2) + Math.pow((j - 2.5), 2));
+                    positionWeights[i][j] = (int)(6 - distanceFromCenter);
                 }
             }
         }
     }
 
-    // אתחול דפוסים אסטרטגיים
+    /**
+     * אתחול דפוסים אסטרטגיים
+     */
     private void initializeStrategicPatterns() {
         strategicPatterns = new HashMap<>();
 
-        // דפוס אלכסוני
-        List<int[]> diagonalPattern = new ArrayList<>();
-        diagonalPattern.add(new int[]{0, 0});
-        diagonalPattern.add(new int[]{1, 1});
-        diagonalPattern.add(new int[]{2, 2});
-        diagonalPattern.add(new int[]{3, 3});
-        diagonalPattern.add(new int[]{4, 4});
-        diagonalPattern.add(new int[]{5, 5});
-        strategicPatterns.put("diagonal1", diagonalPattern);
+        // דפוס אלכסוני ראשי
+        List<int[]> mainDiagonal = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            mainDiagonal.add(new int[]{i, i});
+        }
+        strategicPatterns.put("mainDiagonal", mainDiagonal);
 
-        // דפוס אלכסון נגדי
-        List<int[]> antiDiagonalPattern = new ArrayList<>();
-        antiDiagonalPattern.add(new int[]{0, 5});
-        antiDiagonalPattern.add(new int[]{1, 4});
-        antiDiagonalPattern.add(new int[]{2, 3});
-        antiDiagonalPattern.add(new int[]{3, 2});
-        antiDiagonalPattern.add(new int[]{4, 1});
-        antiDiagonalPattern.add(new int[]{5, 0});
-        strategicPatterns.put("diagonal2", antiDiagonalPattern);
+        // דפוס אלכסון משני
+        List<int[]> antiDiagonal = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            antiDiagonal.add(new int[]{i, 5-i});
+        }
+        strategicPatterns.put("antiDiagonal", antiDiagonal);
 
-        // דפוס Z
-        List<int[]> zPattern = new ArrayList<>();
-        zPattern.add(new int[]{1, 1});
-        zPattern.add(new int[]{1, 2});
-        zPattern.add(new int[]{2, 2});
-        zPattern.add(new int[]{2, 3});
-        zPattern.add(new int[]{3, 3});
-        zPattern.add(new int[]{3, 4});
-        zPattern.add(new int[]{4, 4});
-        strategicPatterns.put("z_pattern", zPattern);
-
-        // דפוס טבעת
-        List<int[]> ringPattern = new ArrayList<>();
-        ringPattern.add(new int[]{1, 1});
-        ringPattern.add(new int[]{1, 2});
-        ringPattern.add(new int[]{1, 3});
-        ringPattern.add(new int[]{1, 4});
-        ringPattern.add(new int[]{2, 4});
-        ringPattern.add(new int[]{3, 4});
-        ringPattern.add(new int[]{4, 4});
-        ringPattern.add(new int[]{4, 3});
-        ringPattern.add(new int[]{4, 2});
-        ringPattern.add(new int[]{4, 1});
-        ringPattern.add(new int[]{3, 1});
-        ringPattern.add(new int[]{2, 1});
-        strategicPatterns.put("ring_pattern", ringPattern);
+        // דפוס "X"
+        List<int[]> xPattern = new ArrayList<>();
+        xPattern.add(new int[]{1, 1});
+        xPattern.add(new int[]{2, 2});
+        xPattern.add(new int[]{3, 3});
+        xPattern.add(new int[]{4, 4});
+        xPattern.add(new int[]{1, 4});
+        xPattern.add(new int[]{2, 3});
+        xPattern.add(new int[]{3, 2});
+        xPattern.add(new int[]{4, 1});
+        strategicPatterns.put("xPattern", xPattern);
     }
 
     //
-    // 4. ממשק ציבורי
+    // 5. ממשק ציבורי
     //
 
-    // ביצוע מהלך של הנחת כלי על הלוח
-    // מערך עם [שורה, עמודה] של המהלך
+    /**
+     * ביצוע מהלך של הנחת כלי על הלוח
+     * @return מערך עם [שורה, עמודה] של המהלך
+     */
     public int[] makeMove() {
-        int[] move;
-        turnCount++; // הגדלת מונה התורים בכל מהלך
-
-        // קביעת מצב AI לפני קבלת החלטה
+        turnCount++;
+        updateThreats();
         determineState();
 
-        // בחירת המהלך המתאים למצב הנוכחי
-        boolean useLookAhead = (random.nextInt(10) < 8); // הסתברות גבוהה לחשיבה קדימה (80%)
+        int[] move;
 
-        if (useLookAhead && currentState == AIState.LOOK_AHEAD) {
-            move = calculateBestMoveWithLookAhead();
-        } else {
-            switch (currentState) {
-                case OFFENSE:
-                    move = getOffensiveMove();
-                    break;
-                case DEFENSE:
-                    move = getDefensiveMove();
-                    break;
-                case CONTROL_CENTER:
-                    move = getStrategicMove();
-                    break;
-                case CONTROL_EDGES:
-                    move = getEdgeControlMove();
-                    break;
-                case BLOCK_CORNERS:
-                    move = getCornerBlockMove();
-                    break;
-                case BUILD_PATTERN:
-                    move = getAdvancedPatternMove();
-                    break;
-                case CONTROL_ROTATION:
-                    move = getRotationControlMove();
-                    break;
-                default:
-                    // מהלך אקראי כברירת מחדל
-                    move = getRandomMove();
-                    break;
-            }
+        // בחירת המהלך המתאים למצב הנוכחי
+        switch (currentState) {
+            case OFFENSE:
+                move = getOffensiveMove();
+                break;
+            case DEFENSE:
+                move = getDefensiveMove();
+                break;
+            case CONTROL_CENTER:
+                move = getCenterControlMove();
+                break;
+            case CONTROL_CORNERS:
+                move = getCornerControlMove();
+                break;
+            case BUILD_PATTERN:
+                move = getPatternBuildingMove();
+                break;
+            default:
+                move = getStrategicMove();
+                break;
         }
 
         return move;
     }
 
-    // ביצוע סיבוב של רביע בלוח
-    // מערך עם [רביע, כיוון] כאשר כיוון מיוצג כ-1 עבור כיוון השעון ו-0 עבור נגד כיוון השעון
+    /**
+     * ביצוע סיבוב של רביע בלוח
+     * @return מערך עם [רביע (0-3), כיוון (0=נגד השעון, 1=עם השעון)]
+     */
     public int[] makeRotation() {
-        int quadrant;
-        boolean clockwise;
+        updateThreats();
 
-        // הסתברות גבוהה לניתוח מעמיק
-        boolean deepAnalysis = (random.nextInt(10) < 8);
-
-        if (deepAnalysis) {
-            // בדיקה אם יש מהלך סיבוב התקפי
-            int[] offensiveRotation = findOffensiveRotation();
-            if (offensiveRotation != null) {
-                quadrant = offensiveRotation[0];
-                clockwise = offensiveRotation[1] == 1;
-            }
-            // בדיקה אם יש מהלך סיבוב הגנתי
-            else {
-                int[] defensiveRotation = findDefensiveRotation();
-                if (defensiveRotation != null) {
-                    quadrant = defensiveRotation[0];
-                    clockwise = defensiveRotation[1] == 1;
-                }
-                // בדיקת סיבוב אסטרטגי משופר
-                else {
-                    int[] strategicRotation = findAdvancedStrategicRotation();
-                    if (strategicRotation != null) {
-                        quadrant = strategicRotation[0];
-                        clockwise = strategicRotation[1] == 1;
-                    }
-                    // בחירת סיבוב חכם
-                    else {
-                        int[] smartRotation = findSmartRandomRotation();
-                        quadrant = smartRotation[0];
-                        clockwise = smartRotation[1] == 1;
-                    }
-                }
-            }
-        } else {
-            // לוגיקה פשוטה יותר
-            int[] offensiveRotation = findOffensiveRotation();
-            if (offensiveRotation != null) {
-                quadrant = offensiveRotation[0];
-                clockwise = offensiveRotation[1] == 1;
-            } else {
-                int[] defensiveRotation = findDefensiveRotation();
-                if (defensiveRotation != null) {
-                    quadrant = defensiveRotation[0];
-                    clockwise = defensiveRotation[1] == 1;
-                } else {
-                    quadrant = random.nextInt(4);
-                    clockwise = random.nextBoolean();
-                }
-            }
+        // בדיקה אם יש סיבוב מנצח
+        int[] winningRotation = findWinningRotation();
+        if (winningRotation != null) {
+            return winningRotation;
         }
 
-        return new int[]{quadrant, clockwise ? 1 : 0};
+        // בדיקה אם יש סיבוב שחוסם ניצחון של היריב
+        int[] blockingRotation = findBlockingRotation();
+        if (blockingRotation != null) {
+            return blockingRotation;
+        }
+
+        // אם אין סיבוב קריטי, בחר סיבוב אסטרטגי
+        return findStrategicRotation();
     }
 
-    // הגדרת מספר השחקן
-    public void setPlayerNumber(int player) {
-        this.playerNumber = player;
+    /**
+     * הגדרת מספר השחקן
+     * @param playerNumber מספר השחקן (0 או 1)
+     */
+    public void setPlayerNumber(int playerNumber) {
+        this.playerNumber = playerNumber;
+        this.opponentNumber = 1 - playerNumber;
     }
 
-    // איפוס מונה טורנים (למשחק חדש)
+    /**
+     * איפוס מונה טורנים (למשחק חדש)
+     */
     public void resetTurnCount() {
         this.turnCount = 0;
+        this.currentThreats.clear();
     }
 
-    // עדכון התייחסות למודל חדש
+    /**
+     * עדכון התייחסות למודל חדש
+     * @param model מודל המשחק
+     */
     public void setModel(PentagoModel model) {
         this.model = model;
-        determineState();
     }
 
     //
-    // 5. ניהול מצבי משחק
+    // 6. ניהול מצבי FSM
     //
 
-    // עדכון מצב ה-FSM בהתבסס על מצב הלוח הנוכחי
+    /**
+     * עדכון מצב ה-FSM בהתבסס על מצב הלוח הנוכחי
+     */
     private void determineState() {
         // אם יש אפשרות לניצחון מיידי, עוברים למצב התקפה
-        if (hasWinningMove(playerNumber)) {
-            currentState = AIState.OFFENSE;
-            return;
-        }
-
-        // אם היריב קרוב לניצחון, עוברים למצב הגנה
-        if (hasWinningMove(1 - playerNumber)) {
-            currentState = AIState.DEFENSE;
-            return;
-        }
-
-        // בדיקת צורך בחישוב מהלכים קדימה
-        if (shouldUseLookAhead()) {
-            currentState = AIState.LOOK_AHEAD;
-            return;
-        }
-
-        // בתחילת המשחק - התמקד בבניית דפוסים אסטרטגיים
-        if (turnCount <= 4) {
-            if (hasAdvancedPatternOpportunity()) {
-                currentState = AIState.BUILD_PATTERN;
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == playerNumber && threat.count >= 4 && !threat.openEnds.isEmpty()) {
+                currentState = AIState.OFFENSE;
                 return;
             }
         }
 
-        // בדיקה אם יש עמדות אסטרטגיות במרכז שכדאי לתפוס
-        if (hasCentralPositionsAvailable()) {
-            currentState = AIState.CONTROL_CENTER;
-            return;
+        // אם היריב קרוב לניצחון, עוברים למצב הגנה
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == opponentNumber && threat.count >= 3 && !threat.openEnds.isEmpty()) {
+                currentState = AIState.DEFENSE;
+                return;
+            }
         }
 
-        // בדיקה אם יש הזדמנות לחסום פינות חשובות
-        if (hasCornersThreat()) {
-            currentState = AIState.BLOCK_CORNERS;
-            return;
+        // בתחילת המשחק - התמקד במרכז
+        if (turnCount <= 3) {
+            if (isCenterAvailable()) {
+                currentState = AIState.CONTROL_CENTER;
+                return;
+            } else {
+                currentState = AIState.CONTROL_CORNERS;
+                return;
+            }
         }
 
-        // בדיקה אם יש הזדמנות לבנות דפוס אסטרטגי
-        if (hasAdvancedPatternOpportunity()) {
+        // בדיקת הזדמנות לבניית דפוסים
+        if (hasPatternOpportunity()) {
             currentState = AIState.BUILD_PATTERN;
             return;
         }
 
-        // בדיקה אם כדאי להתמקד בקצוות הלוח
-        if (shouldControlEdges()) {
-            currentState = AIState.CONTROL_EDGES;
+        // בדיקת הזדמנות התקפית
+        if (hasOffensiveOpportunity()) {
+            currentState = AIState.OFFENSE;
             return;
         }
 
-        // בשלבים מתקדמים יותר של המשחק, התכונן לסיבובים אסטרטגיים
+        // לאחר כ-8 מהלכים, כבר יש דפוסים על הלוח
         if (turnCount > 8) {
-            currentState = AIState.CONTROL_ROTATION;
-            return;
-        }
-
-        // ברירת מחדל - בחירה באסטרטגיה התקפית או בניית דפוס
-        currentState = (random.nextInt(2) == 0) ? AIState.BUILD_PATTERN : AIState.CONTROL_CENTER;
-    }
-
-    // האם להשתמש בחישוב מהלכים קדימה
-    private boolean shouldUseLookAhead() {
-        // יותר סיכוי לחישוב מעמיק ככל שהמשחק מתקדם
-        int stageProgress = Math.min(turnCount / 3, 10);
-
-        // שילוב של רמת קושי גבוהה (8/10) עם התקדמות המשחק
-        return random.nextInt(10) < (8 + stageProgress) / 2;
-    }
-
-    // בדיקה אם יש עמדות אסטרטגיות פנויות במרכז הלוח
-    private boolean hasCentralPositionsAvailable() {
-        // בדיקת המרכז
-        int[][] centerPositions = {{2, 2}, {2, 3}, {3, 2}, {3, 3}};
-        for (int[] pos : centerPositions) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                return true;
+            // בדיקה אם יש דפוס פתוח שאפשר להרחיב
+            if (hasOpenPatterns()) {
+                currentState = AIState.OFFENSE;
+                return;
             }
         }
 
-        // בדיקת מרכזי הרביעים
-        int[][] quadrantCenters = {{1, 1}, {1, 4}, {4, 1}, {4, 4}};
-        for (int[] pos : quadrantCenters) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                return true;
+        // ברירת מחדל - אם אין מצב ברור, בחר בין שליטה במרכז ובפינות
+        if (random.nextBoolean()) {
+            currentState = AIState.CONTROL_CENTER;
+        } else {
+            currentState = AIState.CONTROL_CORNERS;
+        }
+    }
+
+    //
+    // 7. מציאת ועדכון איומים על הלוח
+    //
+
+    /**
+     * עדכון רשימת האיומים/הזדמנויות על הלוח
+     */
+    private void updateThreats() {
+        currentThreats.clear();
+
+        // בדיקת שורות
+        for (int row = 0; row < 6; row++) {
+            for (int startCol = 0; startCol <= 6 - WIN_LENGTH; startCol++) {
+                checkLineForThreats(row, startCol, 0, 1);
             }
         }
 
+        // בדיקת עמודות
+        for (int col = 0; col < 6; col++) {
+            for (int startRow = 0; startRow <= 6 - WIN_LENGTH; startRow++) {
+                checkLineForThreats(startRow, col, 1, 0);
+            }
+        }
+
+        // בדיקת אלכסונים (שמאל-למעלה לימין-למטה)
+        for (int row = 0; row <= 6 - WIN_LENGTH; row++) {
+            for (int col = 0; col <= 6 - WIN_LENGTH; col++) {
+                checkLineForThreats(row, col, 1, 1);
+            }
+        }
+
+        // בדיקת אלכסונים (ימין-למעלה לשמאל-למטה)
+        for (int row = 0; row <= 6 - WIN_LENGTH; row++) {
+            for (int col = WIN_LENGTH - 1; col < 6; col++) {
+                checkLineForThreats(row, col, 1, -1);
+            }
+        }
+
+        // חישוב הציון לכל איום
+        for (PatternThreat threat : currentThreats) {
+            calculateThreatScore(threat);
+        }
+    }
+
+    /**
+     * בדיקת קו (שורה/עמודה/אלכסון) ואיתור איומים
+     */
+    private void checkLineForThreats(int startRow, int startCol, int rowDelta, int colDelta) {
+        int[] counts = new int[2]; // ספירת כלים לכל שחקן
+        List<int[]> positions = new ArrayList<>();
+        List<int[]> emptyPositions = new ArrayList<>();
+
+        // בדיקת קו באורך WIN_LENGTH
+        for (int i = 0; i < WIN_LENGTH; i++) {
+            int row = startRow + i * rowDelta;
+            int col = startCol + i * colDelta;
+
+            int piece = getPieceAt(row, col);
+
+            if (piece == 0 || piece == 1) {
+                counts[piece]++;
+                positions.add(new int[]{row, col});
+            } else { // משבצת ריקה
+                emptyPositions.add(new int[]{row, col});
+            }
+        }
+
+        // יצירת איום לשחקן שיש לו כלים בקו (אם יש מספיק כלים)
+        for (int player = 0; player < 2; player++) {
+            if (counts[player] >= 2 && counts[1-player] == 0) {
+                PatternThreat threat = new PatternThreat(player, counts[player]);
+
+                // מספר הכיוון (שורה=0, עמודה=1, אלכסון=2, אלכסון נגדי=3)
+                if (rowDelta == 0) threat.direction = 0;
+                else if (colDelta == 0) threat.direction = 1;
+                else if (colDelta > 0) threat.direction = 2;
+                else threat.direction = 3;
+
+                // הוספת המיקומים לאיום
+                for (int[] pos : positions) {
+                    if (getPieceAt(pos[0], pos[1]) == player) {
+                        threat.positions.add(pos);
+                    }
+                }
+
+                // הוספת המיקומים הפנויים
+                threat.openEnds.addAll(emptyPositions);
+
+                // הוספת האיום לרשימה
+                currentThreats.add(threat);
+            }
+        }
+    }
+
+    /**
+     * חישוב הציון של איום
+     */
+    private void calculateThreatScore(PatternThreat threat) {
+        // ציון בסיסי לפי מספר הכלים ברצף
+        switch (threat.count) {
+            case 4:
+                threat.score = LINE_4_SCORE;
+                break;
+            case 3:
+                threat.score = LINE_3_SCORE;
+                break;
+            case 2:
+                threat.score = LINE_2_SCORE;
+                break;
+            default:
+                threat.score = 0;
+        }
+
+        // בונוס אם האיום שייך לשחקן ה-AI
+        if (threat.player == playerNumber) {
+            threat.score *= 1.2; // 20% יותר ערך לאיומים שלנו
+        }
+
+        // בונוס לפי מספר הסופים הפתוחים (יותר אפשרויות להשלמה)
+        threat.score *= (1 + 0.2 * threat.openEnds.size());
+
+        // בונוס לפי מיקום האיום (אלכסונים מרכזיים מקבלים בונוס)
+        if ((threat.direction == 2 || threat.direction == 3) &&
+                isPatternNearCenter(threat.positions)) {
+            threat.score *= 1.3;
+        }
+    }
+
+    /**
+     * בדיקה אם דפוס קרוב למרכז הלוח
+     */
+    private boolean isPatternNearCenter(List<int[]> positions) {
+        for (int[] pos : positions) {
+            if ((pos[0] == 2 || pos[0] == 3) && (pos[1] == 2 || pos[1] == 3)) {
+                return true;
+            }
+        }
         return false;
     }
 
-    // בדיקה אם יש איום על פינות חשובות שכדאי לחסום
-    private boolean hasCornersThreat() {
-        int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
+    //
+    // 8. אסטרטגיות למהלכים
+    //
 
-        // בדיקה אם היריב כבר תפס פינה
-        for (int[] corner : corners) {
-            if (getPieceAt(corner[0], corner[1]) == 1 - playerNumber) {
-                return true;
+    /**
+     * בחירת מהלך במצב התקפה
+     */
+    private int[] getOffensiveMove() {
+        List<MoveEvaluation> potentialMoves = new ArrayList<>();
+
+        // חיפוש השלמה לרצף של 4
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == playerNumber && threat.count >= 4 && !threat.openEnds.isEmpty()) {
+                // החזרת מהלך מנצח מיידית
+                return threat.openEnds.get(0);
             }
         }
 
-        // בדיקה אם יש איום על פינה (היריב קרוב לפינה)
-        int[][] cornerApproaches = {
-                {0, 1}, {1, 0}, {1, 1},       // גישה לפינה צפון-מערבית
-                {0, 4}, {1, 4}, {1, 5},       // גישה לפינה צפון-מזרחית
-                {4, 0}, {4, 1}, {5, 1},       // גישה לפינה דרום-מערבית
-                {4, 5}, {4, 4}, {5, 4}        // גישה לפינה דרום-מזרחית
-        };
-
-        for (int[] pos : cornerApproaches) {
-            if (getPieceAt(pos[0], pos[1]) == 1 - playerNumber) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // בדיקה אם יש הזדמנות לדפוסים אסטרטגיים
-    private boolean hasAdvancedPatternOpportunity() {
-        // בדיקת האם יש דפוס שכבר התחלנו
-        for (List<int[]> pattern : strategicPatterns.values()) {
-            int countPlayerPieces = 0;
-            int countEmptySpaces = 0;
-
-            for (int[] pos : pattern) {
-                int piece = getPieceAt(pos[0], pos[1]);
-                if (piece == playerNumber) {
-                    countPlayerPieces++;
-                } else if (piece == -1) {
-                    countEmptySpaces++;
+        // חיפוש השלמה לרצף של 3
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == playerNumber && threat.count == 3 && !threat.openEnds.isEmpty()) {
+                for (int[] movePos : threat.openEnds) {
+                    potentialMoves.add(new MoveEvaluation(movePos, threat.score));
                 }
             }
+        }
 
-            // אם יש לנו לפחות כלי אחד בדפוס ויש מקום להרחיב
-            if (countPlayerPieces > 0 && countEmptySpaces > 0) {
-                return true;
+        // אם יש מהלכים התקפיים, בחר את הטוב ביותר
+        if (!potentialMoves.isEmpty()) {
+            // הוספת אקראיות קלה למהלכים עם ציון דומה
+            potentialMoves.sort((a, b) -> {
+                if (Math.abs(a.score - b.score) < 20) {
+                    return random.nextInt(3) - 1;
+                }
+                return Integer.compare(b.score, a.score);
+            });
+            return potentialMoves.get(0).move;
+        }
+
+        // אם אין מהלכים התקפיים ברורים, נסה לחזק דפוס קיים
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == playerNumber && threat.count == 2 && !threat.openEnds.isEmpty()) {
+                for (int[] movePos : threat.openEnds) {
+                    // עדיפות למהלכים שמחזקים יותר מאיום אחד
+                    int moveScore = evaluateOffensivePosition(movePos[0], movePos[1]);
+                    potentialMoves.add(new MoveEvaluation(movePos, moveScore));
+                }
             }
         }
 
-        return false;
-    }
-
-    // בדיקה אם כדאי להתמקד בשליטה בקצוות
-    private boolean shouldControlEdges() {
-        // בדיקת אחוז כלים בקצוות
-        int edgePieces = 0;
-        int totalEdgePositions = 16; // סה"כ 16 משבצות בקצוות (ללא פינות)
-
-        // בדיקת שורות קצה
-        for (int j = 1; j < 5; j++) {
-            if (getPieceAt(0, j) != -1) edgePieces++;
-            if (getPieceAt(5, j) != -1) edgePieces++;
+        if (!potentialMoves.isEmpty()) {
+            potentialMoves.sort((a, b) -> Integer.compare(b.score, a.score));
+            return potentialMoves.get(0).move;
         }
 
-        // בדיקת עמודות קצה
-        for (int i = 1; i < 5; i++) {
-            if (getPieceAt(i, 0) != -1) edgePieces++;
-            if (getPieceAt(i, 5) != -1) edgePieces++;
+        // אם עדיין אין מהלכים ברורים, חזור למהלך אסטרטגי
+        return getStrategicMove();
+    }
+
+    /**
+     * הערכת מהלך התקפי במיקום מסוים
+     */
+    private int evaluateOffensivePosition(int row, int col) {
+        int score = positionWeights[row][col]; // ציון בסיסי לפי משקל המיקום
+
+        // בדיקה כמה איומים המהלך מחזק או יוצר
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == playerNumber) {
+                for (int[] pos : threat.openEnds) {
+                    if (pos[0] == row && pos[1] == col) {
+                        score += threat.score / 2; // חצי מהציון של האיום
+                    }
+                }
+            }
         }
 
-        // אם פחות מ-50% מהקצוות תפוסים, שווה להתמקד בהם
-        return (edgePieces < totalEdgePositions / 2);
+        // בדיקת יצירת fork (כמה דרכים לניצחון במקביל)
+        score += calculateForkPotential(row, col, playerNumber);
+
+        return score;
     }
 
-    // בדיקה אם יש מהלך שיכול להוביל לניצחון מיידי
-    private boolean hasWinningMove(int player) {
-        List<int[]> potentialWins = findPotentialLinesWith(player, 4);
-        return !potentialWins.isEmpty();
+    /**
+     * חישוב פוטנציאל ליצירת fork (מספר דרכים לניצחון)
+     */
+    private int calculateForkPotential(int row, int col, int player) {
+        BitBoardRepresentation tempBoard = cloneCurrentBoard();
+        tempBoard.placePiece(row * 6 + col, player);
+
+        int forkCount = 0;
+
+        // בדיקת שורות, עמודות ואלכסונים
+        int[][] directions = {
+                {0, 1}, {1, 0}, {1, 1}, {1, -1}
+        };
+
+        for (int[] dir : directions) {
+            int rowDelta = dir[0];
+            int colDelta = dir[1];
+
+            for (int i = -4; i <= 0; i++) {
+                int count = 0;
+                int emptyCount = 0;
+
+                for (int j = 0; j < WIN_LENGTH; j++) {
+                    int r = row + (i + j) * rowDelta;
+                    int c = col + (i + j) * colDelta;
+
+                    if (r < 0 || r >= 6 || c < 0 || c >= 6) {
+                        // מחוץ לגבולות הלוח
+                        count = 0;
+                        break;
+                    }
+
+                    int piece = getPieceAtFromBoard(tempBoard, r, c);
+                    if (piece == player) {
+                        count++;
+                    } else if (piece == -1) {
+                        emptyCount++;
+                    } else {
+                        // כלי של היריב
+                        count = 0;
+                        break;
+                    }
+                }
+
+                // אם יש לפחות 3 כלים שלנו ולפחות 2 משבצות ריקות, זה פוטנציאל fork
+                if (count >= 3 && emptyCount >= 2) {
+                    forkCount++;
+                }
+            }
+        }
+
+        return forkCount * 50; // 50 נקודות לכל דרך ניצחון פוטנציאלית
     }
 
-    //
-    // 6. חישוב וניתוח מהלכים מתקדמים
-    //
+    /**
+     * בחירת מהלך במצב הגנה
+     */
+    private int[] getDefensiveMove() {
+        List<MoveEvaluation> defensiveMoves = new ArrayList<>();
 
-    // חישוב המהלך הטוב ביותר עם חשיבה קדימה
-    private int[] calculateBestMoveWithLookAhead() {
-        List<int[]> possibleMoves = getAllPossibleMoves();
+        // חיפוש איומים של היריב
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == opponentNumber && threat.count >= 3 && !threat.openEnds.isEmpty()) {
+                for (int[] blockPos : threat.openEnds) {
+                    // הערכת מהלך הגנתי
+                    int blockScore = evaluateDefensivePosition(blockPos[0], blockPos[1]);
+                    defensiveMoves.add(new MoveEvaluation(blockPos, blockScore));
+                }
+            }
+        }
+
+        if (!defensiveMoves.isEmpty()) {
+            defensiveMoves.sort((a, b) -> Integer.compare(b.score, a.score));
+            // במקרה של שוויון, בחר את המהלך שגם מקדם אותנו
+            if (defensiveMoves.size() > 1 &&
+                    Math.abs(defensiveMoves.get(0).score - defensiveMoves.get(1).score) < 50) {
+
+                if (evaluateOffensivePosition(defensiveMoves.get(1).move[0],
+                        defensiveMoves.get(1).move[1]) >
+                        evaluateOffensivePosition(defensiveMoves.get(0).move[0],
+                                defensiveMoves.get(0).move[1])) {
+                    return defensiveMoves.get(1).move;
+                }
+            }
+            return defensiveMoves.get(0).move;
+        }
+
+        // אם אין איומים מיידיים, נסה מהלך היברידי (הגנה + התקפה)
+        return getHybridMove();
+    }
+
+    /**
+     * הערכת מהלך הגנתי במיקום מסוים
+     */
+    private int evaluateDefensivePosition(int row, int col) {
+        int score = BLOCK_SCORE; // ציון בסיסי לחסימה
+
+        // בדיקה כמה איומים המהלך חוסם
+        int blockedThreats = 0;
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == opponentNumber) {
+                for (int[] pos : threat.openEnds) {
+                    if (pos[0] == row && pos[1] == col) {
+                        score += threat.count * 50; // ציון לפי מספר הכלים באיום
+                        blockedThreats++;
+                    }
+                }
+            }
+        }
+
+        // בונוס אם חוסמים יותר מאיום אחד בו-זמנית
+        if (blockedThreats > 1) {
+            score *= (1.0 + 0.5 * (blockedThreats - 1));
+        }
+
+        // בדיקה אם המהלך גם מקדם אותנו
+        score += evaluateOffensivePosition(row, col) / 3; // שליש מהציון ההתקפי
+
+        return score;
+    }
+
+    /**
+     * בחירת מהלך היברידי (הגנה + התקפה)
+     */
+    private int[] getHybridMove() {
+        List<int[]> availableMoves = getAvailableMoves();
         int[] bestMove = null;
         int bestScore = Integer.MIN_VALUE;
 
-        for (int[] move : possibleMoves) {
-            // בדיקת מהלך וחישוב ציון
-            int score = evaluateMoveScore(move[0], move[1]);
+        for (int[] move : availableMoves) {
+            int row = move[0];
+            int col = move[1];
 
-            // האם זה המהלך הטוב ביותר עד כה?
+            // שילוב של ציון הגנתי והתקפי
+            int defensiveValue = evaluateDefensivePosition(row, col);
+            int offensiveValue = evaluateOffensivePosition(row, col);
+
+            // נרמול הערכים
+            int totalScore = (defensiveValue + offensiveValue) / 2;
+
+            // הוספת משקל המיקום
+            totalScore += positionWeights[row][col];
+
+            if (totalScore > bestScore) {
+                bestScore = totalScore;
+                bestMove = move;
+            }
+        }
+
+        if (bestMove != null) {
+            return bestMove;
+        }
+
+        // אם אין מהלך היברידי טוב, חזור למהלך אסטרטגי
+        return getStrategicMove();
+    }
+
+    /**
+     * בחירת מהלך לשליטה במרכז
+     */
+    private int[] getCenterControlMove() {
+        List<int[]> centerPositions = new ArrayList<>();
+
+        // מרכז הלוח
+        int[][] centralPositions = {
+                {2, 2}, {2, 3}, {3, 2}, {3, 3},
+                {1, 1}, {1, 4}, {4, 1}, {4, 4},
+                {1, 2}, {1, 3}, {2, 1}, {3, 1}, {4, 2}, {4, 3}, {2, 4}, {3, 4}
+        };
+
+        // בדיקת אילו מיקומים פנויים במרכז
+        for (int[] pos : centralPositions) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                centerPositions.add(pos);
+            }
+        }
+
+        if (!centerPositions.isEmpty()) {
+            // מיון המיקומים לפי ערך אסטרטגי
+            centerPositions.sort((a, b) -> Integer.compare(
+                    positionWeights[b[0]][b[1]], positionWeights[a[0]][a[1]]));
+
+            // הוספת אקראיות קלה למהלכים דומים
+            if (centerPositions.size() > 1 &&
+                    positionWeights[centerPositions.get(0)[0]][centerPositions.get(0)[1]] ==
+                            positionWeights[centerPositions.get(1)[0]][centerPositions.get(1)[1]]) {
+
+                if (random.nextBoolean()) {
+                    return centerPositions.get(1);
+                }
+            }
+
+            return centerPositions.get(0);
+        }
+
+        // אם אין מיקומים פנויים במרכז, בחר מהלך אסטרטגי אחר
+        return getStrategicMove();
+    }
+
+    /**
+     * בחירת מהלך לשליטה בפינות
+     */
+    private int[] getCornerControlMove() {
+        List<MoveEvaluation> cornerMoves = new ArrayList<>();
+
+        // פינות הלוח
+        int[][] cornerPositions = {
+                {0, 0}, {0, 5}, {5, 0}, {5, 5}
+        };
+
+        // בדיקת אילו פינות פנויות
+        for (int[] pos : cornerPositions) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                int score = evaluateCornerPosition(pos[0], pos[1]);
+                cornerMoves.add(new MoveEvaluation(pos, score));
+            }
+        }
+
+        // מיקומים נוספים בקרבת פינות
+        int[][] nearCornerPositions = {
+                {0, 1}, {1, 0}, {1, 1}, {0, 4}, {1, 5}, {1, 4},
+                {4, 0}, {5, 1}, {4, 1}, {4, 5}, {5, 4}, {4, 4}
+        };
+
+        // בדיקת אילו מיקומים פנויים בקרבת פינות
+        for (int[] pos : nearCornerPositions) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                int score = evaluateCornerPosition(pos[0], pos[1]);
+                cornerMoves.add(new MoveEvaluation(pos, score));
+            }
+        }
+
+        if (!cornerMoves.isEmpty()) {
+            cornerMoves.sort((a, b) -> Integer.compare(b.score, a.score));
+            return cornerMoves.get(0).move;
+        }
+
+        // אם אין פינות פנויות, בחר מהלך אסטרטגי
+        return getStrategicMove();
+    }
+
+    /**
+     * הערכת מיקום פינתי
+     */
+    private int evaluateCornerPosition(int row, int col) {
+        int score = positionWeights[row][col];
+
+        // בדיקה אם המיקום הוא פינה ממש
+        boolean isExactCorner = (row == 0 || row == 5) && (col == 0 || col == 5);
+        if (isExactCorner) {
+            score += 10;
+
+            // בדיקה אם יש אלכסון פוטנציאלי מהפינה
+            int diagRow = (row == 0) ? 1 : 4;
+            int diagCol = (col == 0) ? 1 : 4;
+
+            if (getPieceAt(diagRow, diagCol) == playerNumber) {
+                score += 20; // בונוס אם כבר יש לנו כלי שיוצר אלכסון
+            }
+        }
+
+        // בדיקה אם המיקום מתחבר לכלים שלנו
+        int adjacentFriendly = countAdjacentPieces(row, col, playerNumber);
+        score += adjacentFriendly * 15;
+
+        return score;
+    }
+
+    /**
+     * בחירת מהלך לבניית דפוס
+     */
+    private int[] getPatternBuildingMove() {
+        List<MoveEvaluation> patternMoves = new ArrayList<>();
+
+        // בדיקת כל הדפוסים האסטרטגיים
+        for (Map.Entry<String, List<int[]>> entry : strategicPatterns.entrySet()) {
+            List<int[]> pattern = entry.getValue();
+
+            // בדיקה כמה כלים כבר יש בדפוס
+            int patternScore = evaluatePattern(pattern);
+
+            if (patternScore > 0) {
+                // חיפוש משבצות פנויות בדפוס
+                for (int[] pos : pattern) {
+                    if (getPieceAt(pos[0], pos[1]) == -1) {
+                        int moveScore = patternScore + positionWeights[pos[0]][pos[1]];
+
+                        // בדיקה אם המהלך יוצר גם איומים אחרים
+                        moveScore += evaluateOffensivePosition(pos[0], pos[1]) / 2;
+
+                        patternMoves.add(new MoveEvaluation(pos, moveScore));
+                    }
+                }
+            }
+        }
+
+        if (!patternMoves.isEmpty()) {
+            patternMoves.sort((a, b) -> Integer.compare(b.score, a.score));
+
+            // גיוון - לפעמים בחר מהלך אקראי מתוך ה-3 הכי טובים
+            if (random.nextInt(10) < 3 && patternMoves.size() >= 3) {
+                return patternMoves.get(random.nextInt(3)).move;
+            }
+
+            return patternMoves.get(0).move;
+        }
+
+        // אם אין מהלכי דפוס טובים, חזור למהלך אסטרטגי
+        return getStrategicMove();
+    }
+
+    /**
+     * הערכת דפוס אסטרטגי
+     */
+    private int evaluatePattern(List<int[]> pattern) {
+        int playerPieces = 0;
+        int opponentPieces = 0;
+        int emptySpaces = 0;
+
+        for (int[] pos : pattern) {
+            int piece = getPieceAt(pos[0], pos[1]);
+            if (piece == playerNumber) {
+                playerPieces++;
+            } else if (piece == opponentNumber) {
+                opponentPieces++;
+            } else {
+                emptySpaces++;
+            }
+        }
+
+        // אם יש יותר מדי כלים של היריב, הדפוס לא שימושי
+        if (opponentPieces > pattern.size() / 3) {
+            return 0;
+        }
+
+        // חישוב ציון בסיסי - כמה הדפוס כבר מפותח
+        int score = playerPieces * 20;
+
+        // בונוס אם יש הרבה מקום להתפתח
+        score += emptySpaces * 5;
+
+        // בונוס אם יש כבר יותר מכלי אחד בדפוס
+        if (playerPieces > 1) {
+            score += playerPieces * 10;
+        }
+
+        return score;
+    }
+
+    /**
+     * בחירת מהלך אסטרטגי כללי
+     */
+    private int[] getStrategicMove() {
+        List<int[]> availableMoves = getAvailableMoves();
+
+        if (availableMoves.isEmpty()) {
+            // לא אמור לקרות
+            return new int[]{0, 0};
+        }
+
+        int[] bestMove = null;
+        int bestScore = Integer.MIN_VALUE;
+
+        for (int[] move : availableMoves) {
+            int row = move[0];
+            int col = move[1];
+
+            // שילוב של ציונים
+            int score = positionWeights[row][col] * 2; // משקל בסיסי של המיקום
+
+            // בדיקת פוטנציאל התקפי
+            score += evaluateOffensivePosition(row, col);
+
+            // בדיקת פוטנציאל הגנתי
+            score += evaluateDefensivePosition(row, col) / 2;
+
+            // בדיקה אם המהלך יכול להשתלב בדפוס אסטרטגי
+            for (List<int[]> pattern : strategicPatterns.values()) {
+                for (int[] pos : pattern) {
+                    if (pos[0] == row && pos[1] == col) {
+                        score += 15;
+                        break;
+                    }
+                }
+            }
+
+            // בונוס למהלכים שמתחברים לכלים קיימים שלנו
+            int adjacentFriendly = countAdjacentPieces(row, col, playerNumber);
+            score += adjacentFriendly * 10;
+
+            // הוספת רעש אקראי קטן
+            score += random.nextInt(5);
+
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = move;
             }
         }
 
-        // אם לא נמצא מהלך טוב, בחר מהלך אסטרטגי
-        if (bestMove == null) {
-            return getStrategicMove();
-        }
-
         return bestMove;
     }
 
-    // הערכת ציון למהלך ספציפי
-    private int evaluateMoveScore(int row, int col) {
-        // חישוב בסיסי של ציון המהלך
-        int score = 0;
-
-        // תוספת ציון לפי משקל העמדה
-        score += positionWeights[row][col] * 2;
-
-        // ביצוע מהלך בלוח זמני
-        PentagoModel tempModel = createTempModel();
-        int position = row * 6 + col;
-        tempModel.getBoard().placePiece(position, playerNumber);
-
-        // בדיקה אם המהלך יוצר איום (רצף של 3)
-        score += countThreats(tempModel.getBoard(), playerNumber) * 20;
-
-        // בדיקה אם המהלך חוסם איום של היריב
-        score += countThreats(tempModel.getBoard(), 1 - playerNumber) * (-15);
-
-        // בדיקת כמה אפשרויות סיבוב יכולות להוביל לניצחון אחרי המהלך
-        int winningRotationsCount = countWinningRotations(tempModel);
-        score += winningRotationsCount * 25;
-
-        // בונוס אם המהלך הוא חלק מדפוס אסטרטגי
-        if (isPartOfStrategicPattern(row, col)) {
-            score += 10;
-        }
-
-        return score;
-    }
-
-    // בדיקה אם מיקום הוא חלק מדפוס אסטרטגי
-    private boolean isPartOfStrategicPattern(int row, int col) {
-        for (List<int[]> pattern : strategicPatterns.values()) {
-            for (int[] pos : pattern) {
-                if (pos[0] == row && pos[1] == col) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    // ספירת אפשרויות סיבוב שיובילו לניצחון
-    private int countWinningRotations(PentagoModel model) {
-        int count = 0;
-
-        // בדיקת כל אפשרויות הסיבוב
-        for (int quadrant = 0; quadrant < 4; quadrant++) {
-            for (int dir = 0; dir < 2; dir++) {
-                boolean clockwise = (dir == 1);
-
-                // יצירת לוח זמני לבדיקת הסיבוב
-                PentagoModel rotationModel = createTempModelFrom(model);
-                rotationModel.getBoard().rotateQuadrant(quadrant, clockwise);
-
-                // בדיקה אם הסיבוב מוביל לניצחון
-                if (rotationModel.getBoard().hasWinningLine(playerNumber)) {
-                    count++;
-                }
-            }
-        }
-
-        return count;
-    }
-
     //
-    // 7. אסטרטגיות מהלכי משחק לפי מצבים
+    // 9. אסטרטגיות לסיבוב
     //
 
-    // חיפוש המהלך הטוב ביותר במצב התקפה
-    private int[] getOffensiveMove() {
-        // חיפוש מהלכים שמובילים לרצף של 4
-        List<int[]> potentialWins = findPotentialLinesWith(playerNumber, 3);
-
-        if (!potentialWins.isEmpty()) {
-            // החזרת המהלך הטוב ביותר מבין האופציות
-            return potentialWins.get(random.nextInt(potentialWins.size()));
-        }
-
-        // חיפוש מהלכים שמובילים לרצף של 3
-        List<int[]> potentialLines = findPotentialLinesWith(playerNumber, 2);
-
-        if (!potentialLines.isEmpty()) {
-            return potentialLines.get(random.nextInt(potentialLines.size()));
-        }
-
-        // אם אין אפשרויות התקפיות ברורות, חזרה למהלך אסטרטגי
-        return getStrategicMove();
-    }
-
-    // חיפוש המהלך הטוב ביותר במצב הגנה
-    private int[] getDefensiveMove() {
-        // חיפוש מהלכים שחוסמים רצף של 4 של היריב
-        List<int[]> criticalBlocks = findPotentialLinesWith(1 - playerNumber, 3);
-
-        if (!criticalBlocks.isEmpty()) {
-            // החזרת המהלך הטוב ביותר מבין האופציות
-            return criticalBlocks.get(random.nextInt(criticalBlocks.size()));
-        }
-
-        // חיפוש מהלכים שחוסמים רצף של 3 של היריב
-        List<int[]> potentialBlocks = findPotentialLinesWith(1 - playerNumber, 2);
-
-        if (!potentialBlocks.isEmpty()) {
-            return potentialBlocks.get(random.nextInt(potentialBlocks.size()));
-        }
-
-        // אם אין מהלכי הגנה דחופים, ניתן לבצע מהלך אסטרטגי
-        return getStrategicMove();
-    }
-
-    // חיפוש המהלך הטוב ביותר במצב אסטרטגי (שליטה במרכז)
-    private int[] getStrategicMove() {
-        List<int[]> strategicPositions = new ArrayList<>();
-
-        // עדיפות למרכז הלוח - תצורה 2x2 באמצע הלוח
-        int[][] centerPositions = {{2, 2}, {2, 3}, {3, 2}, {3, 3}};
-        for (int[] pos : centerPositions) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                strategicPositions.add(pos);
-            }
-        }
-
-        // אם יש עמדות אסטרטגיות באמצע הלוח
-        if (!strategicPositions.isEmpty() && random.nextInt(10) < 7) {
-            return strategicPositions.get(random.nextInt(strategicPositions.size()));
-        }
-
-        // עמדות אסטרטגיות במרכז כל רביע
-        int[][] quadrantCenters = {{1, 1}, {1, 4}, {4, 1}, {4, 4}};
-        strategicPositions.clear();
-
-        for (int[] pos : quadrantCenters) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                strategicPositions.add(pos);
-            }
-        }
-
-        if (!strategicPositions.isEmpty() && random.nextInt(10) < 5) {
-            return strategicPositions.get(random.nextInt(strategicPositions.size()));
-        }
-
-        // אם הכל תפוס או על פי הסתברות מסוימת, בחר מהלך בקצה
-        return getEdgeControlMove();
-    }
-
-    // חיפוש מהלך לשליטה בקצוות הלוח
-    private int[] getEdgeControlMove() {
-        List<int[]> edgePositions = new ArrayList<>();
-
-        // שורות קצה (שורה 0 ושורה 5, לא כולל פינות)
-        for (int j = 1; j < 5; j++) {
-            if (getPieceAt(0, j) == -1) edgePositions.add(new int[]{0, j});
-            if (getPieceAt(5, j) == -1) edgePositions.add(new int[]{5, j});
-        }
-
-        // עמודות קצה (עמודה 0 ועמודה 5, לא כולל פינות)
-        for (int i = 1; i < 5; i++) {
-            if (getPieceAt(i, 0) == -1) edgePositions.add(new int[]{i, 0});
-            if (getPieceAt(i, 5) == -1) edgePositions.add(new int[]{i, 5});
-        }
-
-        if (!edgePositions.isEmpty()) {
-            return edgePositions.get(random.nextInt(edgePositions.size()));
-        }
-
-        // אם אין עמדות קצה פנויות, בדוק עמדות פינה
-        List<int[]> cornerPositions = new ArrayList<>();
-        int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
-
-        for (int[] pos : corners) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                cornerPositions.add(pos);
-            }
-        }
-
-        if (!cornerPositions.isEmpty()) {
-            return cornerPositions.get(random.nextInt(cornerPositions.size()));
-        }
-
-        // אם אין גם קצוות וגם פינות פנויות, חזרה למהלך אקראי
-        return getRandomMove();
-    }
-
-    // חיפוש מהלך לחסימת פינות אסטרטגיות
-    private int[] getCornerBlockMove() {
-        List<int[]> cornerBlocks = new ArrayList<>();
-
-        // רשימת המיקומים שחוסמים גישה לפינות
-        int[][] cornerBlockPositions = {
-                {0, 1}, {1, 0}, {1, 1},       // חסימת פינה צפון-מערבית
-                {0, 4}, {1, 4}, {1, 5},       // חסימת פינה צפון-מזרחית
-                {4, 0}, {4, 1}, {5, 1},       // חסימת פינה דרום-מערבית
-                {4, 5}, {4, 4}, {5, 4}        // חסימת פינה דרום-מזרחית
-        };
-
-        // בדיקה אם היריב כבר תפס פינה
-        int[][] corners = {{0, 0}, {0, 5}, {5, 0}, {5, 5}};
-        boolean[] enemyInCorner = new boolean[4]; // [NW, NE, SW, SE]
-
-        for (int i = 0; i < 4; i++) {
-            enemyInCorner[i] = (getPieceAt(corners[i][0], corners[i][1]) == 1 - playerNumber);
-        }
-
-        // אם היריב תפס פינה, תעדיף לחסום התקדמות מהפינה הזו
-        for (int i = 0; i < 4; i++) {
-            if (enemyInCorner[i]) {
-                int startIdx = i * 3; // כל פינה יש 3 עמדות חסימה
-                for (int j = 0; j < 3; j++) {
-                    int[] pos = cornerBlockPositions[startIdx + j];
-                    if (getPieceAt(pos[0], pos[1]) == -1) {
-                        cornerBlocks.add(pos);
-                    }
-                }
-            }
-        }
-
-        // אם מצאנו עמדות חסימה למיקומים שבהם היריב כבר נמצא, נבחר מהן
-        if (!cornerBlocks.isEmpty()) {
-            return cornerBlocks.get(random.nextInt(cornerBlocks.size()));
-        }
-
-        // אחרת, נבדוק כל עמדות החסימה האפשריות
-        cornerBlocks.clear();
-        for (int[] pos : cornerBlockPositions) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                cornerBlocks.add(pos);
-            }
-        }
-
-        if (!cornerBlocks.isEmpty()) {
-            return cornerBlocks.get(random.nextInt(cornerBlocks.size()));
-        }
-
-        // אם אין עמדות חסימת פינות פנויות, נחזור למהלך אסטרטגי
-        return getStrategicMove();
-    }
-
-    // מהלך דפוס אסטרטגי משופר
-    private int[] getAdvancedPatternMove() {
-        // בחירת דפוס אסטרטגי מתאים למצב המשחק הנוכחי
-        String bestPatternKey = selectBestPattern();
-
-        if (bestPatternKey != null && strategicPatterns.containsKey(bestPatternKey)) {
-            List<int[]> pattern = strategicPatterns.get(bestPatternKey);
-            List<int[]> availablePositions = new ArrayList<>();
-
-            // בדיקת אילו משבצות בדפוס פנויות
-            for (int[] pos : pattern) {
-                if (getPieceAt(pos[0], pos[1]) == -1) {
-                    availablePositions.add(pos);
-                }
-            }
-
-            // בדיקת אילו משבצות בדפוס כבר תפוסות על ידינו
-            int ownedCount = 0;
-            for (int[] pos : pattern) {
-                if (getPieceAt(pos[0], pos[1]) == playerNumber) {
-                    ownedCount++;
-                }
-            }
-
-            // אם יש משבצות פנויות בדפוס, ויש לנו כבר כלים בדפוס, בחר אחת
-            if (!availablePositions.isEmpty() && ownedCount > 0) {
-                return availablePositions.get(random.nextInt(availablePositions.size()));
-            }
-            // אם אין לנו עדיין כלים בדפוס, בחר בהסתברות גבוהה
-            else if (!availablePositions.isEmpty() && random.nextInt(10) < 8) {
-                return availablePositions.get(random.nextInt(availablePositions.size()));
-            }
-        }
-
-        // אם לא מצאנו דפוס מתאים, נחזור למהלך דפוס רגיל
-        return getPatternMove();
-    }
-
-    // בחירת הדפוס האסטרטגי הטוב ביותר למצב הנוכחי
-    private String selectBestPattern() {
-        Map<String, Integer> patternScores = new HashMap<>();
-
-        // חישוב ציון לכל דפוס
-        for (String patternKey : strategicPatterns.keySet()) {
-            List<int[]> pattern = strategicPatterns.get(patternKey);
-            int score = 0;
-
-            // כמה משבצות בדפוס כבר תפסנו
-            int ownedCount = 0;
-            // כמה משבצות בדפוס היריב תפס
-            int opponentCount = 0;
-            // כמה משבצות בדפוס פנויות
-            int emptyCount = 0;
-
-            for (int[] pos : pattern) {
-                int piece = getPieceAt(pos[0], pos[1]);
-                if (piece == playerNumber) {
-                    ownedCount++;
-                    score += 2;
-                } else if (piece == 1 - playerNumber) {
-                    opponentCount++;
-                    score -= 3;
-                } else {
-                    emptyCount++;
-                    score += 1;
-                }
-            }
-
-            // בונוס אם יש לנו יותר מכלי אחד בדפוס
-            if (ownedCount > 1) {
-                score += ownedCount * 3;
-            }
-
-            // קנס אם היריב שולט בדפוס
-            if (opponentCount > pattern.size() / 3) {
-                score -= 10;
-            }
-
-            // שמירת הציון הסופי
-            patternScores.put(patternKey, score);
-        }
-
-        // בחירת הדפוס בעל הציון הגבוה ביותר
-        String bestPattern = null;
-        int bestScore = Integer.MIN_VALUE;
-
-        for (Map.Entry<String, Integer> entry : patternScores.entrySet()) {
-            if (entry.getValue() > bestScore) {
-                bestScore = entry.getValue();
-                bestPattern = entry.getKey();
-            }
-        }
-
-        // אם כל הדפוסים קיבלו ציון נמוך, נחזיר null
-        if (bestScore < 0) {
-            return null;
-        }
-
-        return bestPattern;
-    }
-
-    // חיפוש מהלך לבניית דפוס אסטרטגי
-    private int[] getPatternMove() {
-        // דפוס אלכסוני - בניית "X" באמצע הלוח
-        if (turnCount <= 4) { // משתמש בדפוס זה בטורנים מוקדמים
-            int[][] diagonalPattern = {{1, 1}, {2, 2}, {3, 3}, {4, 4}, {1, 4}, {2, 3}, {3, 2}, {4, 1}};
-            List<int[]> availableDiagonals = new ArrayList<>();
-
-            // בדיקת עמדות פנויות בדפוס האלכסוני
-            for (int[] pos : diagonalPattern) {
-                if (getPieceAt(pos[0], pos[1]) == -1) {
-                    availableDiagonals.add(pos);
-                }
-            }
-
-            // אם יש עמדות פנויות בדפוס, בחר אחת באקראי
-            if (!availableDiagonals.isEmpty()) {
-                return availableDiagonals.get(random.nextInt(availableDiagonals.size()));
-            }
-        }
-
-        // דפוס "משולש" - בניית משולש במרכז
-        if (turnCount > 4 && turnCount <= 8) {
-            int[][] trianglePattern = {{2, 1}, {2, 4}, {3, 1}, {3, 4}, {1, 2}, {1, 3}, {4, 2}, {4, 3}};
-            List<int[]> availableTriangles = new ArrayList<>();
-
-            // בדיקת עמדות פנויות בדפוס המשולשי
-            for (int[] pos : trianglePattern) {
-                if (getPieceAt(pos[0], pos[1]) == -1) {
-                    availableTriangles.add(pos);
-                }
-            }
-
-            if (!availableTriangles.isEmpty()) {
-                return availableTriangles.get(random.nextInt(availableTriangles.size()));
-            }
-        }
-
-        // דפוס "גשר" - חיבור בין שני חלקי הלוח
-        int[][] bridgePattern = {{2, 0}, {2, 5}, {3, 0}, {3, 5}, {0, 2}, {0, 3}, {5, 2}, {5, 3}};
-        List<int[]> availableBridges = new ArrayList<>();
-
-        // בדיקת עמדות פנויות בדפוס הגשר
-        for (int[] pos : bridgePattern) {
-            if (getPieceAt(pos[0], pos[1]) == -1) {
-                availableBridges.add(pos);
-            }
-        }
-
-        if (!availableBridges.isEmpty()) {
-            return availableBridges.get(random.nextInt(availableBridges.size()));
-        }
-
-        // אם אין אפשרויות לדפוסים, חזור למהלך אסטרטגי
-        return getStrategicMove();
-    }
-
-    // חיפוש מהלך שמכין לסיבוב אסטרטגי
-    private int[] getRotationControlMove() {
-        // זיהוי רביעים שהם המועמדים הטובים ביותר לסיבוב
-        List<Integer> quadrantsWithMostPieces = new ArrayList<>();
-        int[] piecesInQuadrant = new int[4];
-
-        // ספירת כלים בכל רביע
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                int piece = getPieceAt(i, j);
-                if (piece != -1) {
-                    int quadrant = (i / 3) * 2 + (j / 3); // חישוב מספר הרביע (0-3)
-                    piecesInQuadrant[quadrant]++;
-                }
-            }
-        }
-
-        // מציאת הרביע עם מספר הכלים הגבוה ביותר
-        int maxPieces = -1;
-        for (int q = 0; q < 4; q++) {
-            if (piecesInQuadrant[q] > maxPieces) {
-                maxPieces = piecesInQuadrant[q];
-                quadrantsWithMostPieces.clear();
-                quadrantsWithMostPieces.add(q);
-            } else if (piecesInQuadrant[q] == maxPieces) {
-                quadrantsWithMostPieces.add(q);
-            }
-        }
-
-        // מציאת משבצת פנויה באחד הרביעים המועדפים
-        if (!quadrantsWithMostPieces.isEmpty()) {
-            int targetQuadrant = quadrantsWithMostPieces.get(random.nextInt(quadrantsWithMostPieces.size()));
-            int startRow = (targetQuadrant / 2) * 3;
-            int startCol = (targetQuadrant % 2) * 3;
-
-            List<int[]> emptyPositions = new ArrayList<>();
-            for (int i = 0; i < 3; i++) {
-                for (int j = 0; j < 3; j++) {
-                    if (getPieceAt(startRow + i, startCol + j) == -1) {
-                        emptyPositions.add(new int[] {startRow + i, startCol + j});
-                    }
-                }
-            }
-
-            if (!emptyPositions.isEmpty()) {
-                return emptyPositions.get(random.nextInt(emptyPositions.size()));
-            }
-        }
-
-        // אם אין משבצות פנויות ברביעים המועדפים, נחזור למהלך אסטרטגי
-        return getStrategicMove();
-    }
-
-    // בחירת מהלך אקראי - כברירת מחדל אחרונה
-    private int[] getRandomMove() {
-        List<int[]> availableMoves = new ArrayList<>();
-        BitBoardRepresentation board = model.getBoard();
-
-        // איסוף כל המהלכים האפשריים
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                int position = i * 6 + j;
-                if (board.isPositionEmpty(position)) {
-                    availableMoves.add(new int[]{i, j});
-                }
-            }
-        }
-
-        if (!availableMoves.isEmpty()) {
-            return availableMoves.get(random.nextInt(availableMoves.size()));
-        }
-
-        // אם אין מהלכים אפשריים (לא אמור לקרות במשחק רגיל)
-        return new int[]{0, 0};
-    }
-
-    //
-    // 8. אסטרטגיות סיבוב
-    //
-
-    // חיפוש סיבוב רביע שיוביל לניצחון
-    private int[] findOffensiveRotation() {
-        // תחילה, ננסה מהלכים בכל הרביעים ובשני הכיוונים
+    /**
+     * מציאת סיבוב שיוביל לניצחון
+     */
+    private int[] findWinningRotation() {
         for (int quadrant = 0; quadrant < 4; quadrant++) {
             for (int direction = 0; direction < 2; direction++) {
-                boolean clockwise = direction == 1;
+                boolean clockwise = (direction == 1);
 
-                // יצירת מודל זמני לבדיקת המהלך
-                PentagoModel tempModel = createTempModel();
-                BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-                // סימולציה של סיבוב הרביע
+                // יצירת לוח זמני לבדיקת הסיבוב
+                BitBoardRepresentation tempBoard = cloneCurrentBoard();
                 tempBoard.rotateQuadrant(quadrant, clockwise);
 
-                // בדיקה אם הסיבוב יוצר ניצחון
-                if (tempBoard.hasWinningLine(playerNumber)) {
+                // בדיקה אם הסיבוב מוביל לניצחון
+                if (checkWinningLine(tempBoard, playerNumber)) {
                     return new int[]{quadrant, direction};
                 }
             }
@@ -998,23 +1024,20 @@ public class PentagoAI {
         return null;
     }
 
-    // חיפוש סיבוב רביע שימנע ניצחון של היריב
-    private int[] findDefensiveRotation() {
-        // בדיקת כל הרביעים וכיווני הסיבוב
+    /**
+     * מציאת סיבוב שיחסום ניצחון של היריב
+     */
+    private int[] findBlockingRotation() {
         for (int quadrant = 0; quadrant < 4; quadrant++) {
             for (int direction = 0; direction < 2; direction++) {
-                boolean clockwise = direction == 1;
+                boolean clockwise = (direction == 1);
 
-                // יצירת מודל זמני לבדיקת המהלך
-                PentagoModel tempModel = createTempModel();
-                BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-                // סימולציה של סיבוב הרביע
+                // יצירת לוח זמני לבדיקת הסיבוב
+                BitBoardRepresentation tempBoard = cloneCurrentBoard();
                 tempBoard.rotateQuadrant(quadrant, clockwise);
 
                 // בדיקה אם הסיבוב מונע ניצחון של היריב
-                if (!tempBoard.hasWinningLine(1 - playerNumber) &&
-                        countThreats(tempBoard, 1 - playerNumber) < countThreats(model.getBoard(), 1 - playerNumber)) {
+                if (!checkWinningLine(tempBoard, opponentNumber)) {
                     return new int[]{quadrant, direction};
                 }
             }
@@ -1023,25 +1046,23 @@ public class PentagoAI {
         return null;
     }
 
-    // חיפוש סיבוב אסטרטגי משופר
-    private int[] findAdvancedStrategicRotation() {
+    /**
+     * מציאת סיבוב אסטרטגי אופטימלי
+     */
+    private int[] findStrategicRotation() {
         int bestScore = Integer.MIN_VALUE;
         int[] bestRotation = null;
 
-        // בדיקת כל הרביעים וכיווני הסיבוב
         for (int quadrant = 0; quadrant < 4; quadrant++) {
             for (int direction = 0; direction < 2; direction++) {
-                boolean clockwise = direction == 1;
+                boolean clockwise = (direction == 1);
 
-                // יצירת מודל זמני לבדיקת המהלך
-                PentagoModel tempModel = createTempModel();
-                BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-                // סימולציה של סיבוב הרביע
+                // יצירת לוח זמני לבדיקת הסיבוב
+                BitBoardRepresentation tempBoard = cloneCurrentBoard();
                 tempBoard.rotateQuadrant(quadrant, clockwise);
 
-                // חישוב הערכה מתקדמת של מצב הלוח לאחר הסיבוב
-                int score = evaluateAdvancedRotationScore(tempBoard, quadrant, clockwise);
+                // הערכת מצב הלוח לאחר הסיבוב
+                int score = evaluateBoardAfterRotation(tempBoard, quadrant, clockwise);
 
                 if (score > bestScore) {
                     bestScore = score;
@@ -1050,273 +1071,305 @@ public class PentagoAI {
             }
         }
 
+        // אם לא נמצא סיבוב מועדף, בחר אקראי
+        if (bestRotation == null) {
+            return new int[]{random.nextInt(4), random.nextInt(2)};
+        }
+
         return bestRotation;
     }
 
-    // הערכה מתקדמת של ציון סיבוב
-    private int evaluateAdvancedRotationScore(BitBoardRepresentation board, int quadrant, boolean clockwise) {
+    /**
+     * הערכת מצב הלוח לאחר סיבוב
+     */
+    private int evaluateBoardAfterRotation(BitBoardRepresentation board, int quadrant, boolean clockwise) {
         int score = 0;
 
-        // בונוס למספר האיומים שלנו (רצף של 3 + משבצת ריקה)
-        score += 5 * countThreats(board, playerNumber);
+        // בדיקת איומים שלנו
+        List<PatternThreat> afterThreats = findThreatsOnBoard(board);
 
-        // מינוס למספר האיומים של היריב
-        score -= 8 * countThreats(board, 1 - playerNumber);
+        // ספירת איומים של כל שחקן
+        int ourThreats = 0;
+        int opponentThreats = 0;
+        int ourOpenLines = 0;
 
-        // בדיקת דפוסים אסטרטגיים
-        for (String patternKey : strategicPatterns.keySet()) {
-            int patternScore = evaluatePatternAfterRotation(board, strategicPatterns.get(patternKey));
-            score += patternScore;
+        for (PatternThreat threat : afterThreats) {
+            if (threat.player == playerNumber) {
+                ourThreats++;
+                if (threat.count >= 3) {
+                    score += threat.count * 25;
+                }
+                ourOpenLines += threat.openEnds.size();
+            } else {
+                opponentThreats++;
+                if (threat.count >= 3) {
+                    score -= threat.count * 30;
+                }
+            }
         }
 
-        // בדיקת מספר הכלים ברביע ומספר הכלים שלנו לאחר הסיבוב
+        // הערכת כמה הסיבוב יוצר לנו יתרון
+        score += (ourThreats - opponentThreats) * 20;
+        score += ourOpenLines * 5;
+
+        // בונוס לסיבוב שמשנה רביע עם הרבה כלים (מייצר יותר הזדמנויות)
         int piecesInQuadrant = countPiecesInQuadrant(board, quadrant);
-        int ourPiecesInQuadrant = countPlayerPiecesInQuadrant(board, quadrant, playerNumber);
+        score += piecesInQuadrant * 5;
 
-        // בונוס אם רוב הכלים ברביע הם שלנו
-        if (piecesInQuadrant > 0 && ourPiecesInQuadrant > piecesInQuadrant / 2) {
-            score += 5;
+        // בדיקה אם הסיבוב יוצר דפוסים אסטרטגיים
+        for (List<int[]> pattern : strategicPatterns.values()) {
+            int patternScore = evaluatePatternOnBoard(board, pattern);
+            score += patternScore / 2;
         }
 
-        // בדיקת עמדות אסטרטגיות
-        score += evaluateStrategicPositionsAfterRotation(board);
-
-        // מרכיב אקראי קטן
-        score += random.nextInt(3);
+        // הוספת אקראיות קלה
+        score += random.nextInt(10);
 
         return score;
     }
 
-    // הערכת ערך של דפוס לאחר סיבוב
-    private int evaluatePatternAfterRotation(BitBoardRepresentation board, List<int[]> pattern) {
-        int score = 0;
-        int ownedCount = 0;
-        int opponentCount = 0;
-
-        for (int[] pos : pattern) {
-            int piece = board.getPieceAt(pos[0], pos[1]);
-            if (piece == playerNumber) {
-                ownedCount++;
-            } else if (piece == 1 - playerNumber) {
-                opponentCount++;
-            }
-        }
-
-        // חישוב ציון בהתאם לשליטה בדפוס
-        if (ownedCount > pattern.size() / 3) {
-            score += ownedCount * 2;
-        }
-
-        if (opponentCount > pattern.size() / 3) {
-            score -= opponentCount * 2;
-        }
-
-        return score;
-    }
-
-    // הערכת עמדות אסטרטגיות לאחר סיבוב
-    private int evaluateStrategicPositionsAfterRotation(BitBoardRepresentation board) {
-        int score = 0;
-
-        // בדיקת עמדות מרכזיות
-        int[][] strategicSpots = {
-                {2, 2}, {2, 3}, {3, 2}, {3, 3}, // מרכז הלוח
-                {1, 1}, {1, 4}, {4, 1}, {4, 4}  // מרכזי רביעים
-        };
-
-        for (int[] pos : strategicSpots) {
-            int piece = board.getPieceAt(pos[0], pos[1]);
-            if (piece == playerNumber) {
-                score += 3;
-            } else if (piece == 1 - playerNumber) {
-                score -= 2;
-            }
-        }
-
-        return score;
-    }
-
-    // מציאת סיבוב חכם (כאשר אין אופציות ברורות)
-    private int[] findSmartRandomRotation() {
-        // מועדף להשתמש ברביע עם כמות מאוזנת של כלים או ברביע עם כלים של היריב
-        List<Integer> potentialQuadrants = new ArrayList<>();
-        int[] pieceBalance = new int[4]; // ההפרש בין כלים שלנו לכלים של היריב בכל רביע
-
-        for (int q = 0; q < 4; q++) {
-            int ourPieces = countPlayerPiecesInQuadrant(model.getBoard(), q, playerNumber);
-            int theirPieces = countPlayerPiecesInQuadrant(model.getBoard(), q, 1 - playerNumber);
-            pieceBalance[q] = theirPieces - ourPieces;
-
-            // אם יש יותר כלים של היריב ברביע
-            if (pieceBalance[q] > 0) {
-                // הוסף את הרביע פעמיים להגדלת הסיכוי לבחירתו
-                potentialQuadrants.add(q);
-                potentialQuadrants.add(q);
-            } else {
-                // הוסף את הרביע פעם אחת
-                potentialQuadrants.add(q);
-            }
-        }
-
-        // אם אין רביעים מועדפים, השתמש בכל הרביעים
-        if (potentialQuadrants.isEmpty()) {
-            for (int q = 0; q < 4; q++) {
-                potentialQuadrants.add(q);
-            }
-        }
-
-        // בחירת רביע אקראי מתוך הרשימה (עם העדפה לרביעים שיש בהם יותר כלים של היריב)
-        int selectedQuadrant = potentialQuadrants.get(random.nextInt(potentialQuadrants.size()));
-
-        // החלטה אם לסובב עם כיוון השעון או נגדו
-        boolean clockwise = random.nextBoolean();
-
-        return new int[]{selectedQuadrant, clockwise ? 1 : 0};
-    }
-
-    //
-    // 9. פונקציות עזר לניתוח הלוח
-    //
-
-    // מציאת מהלכים שיכולים להשלים רצף בגודל מסוים
-    private List<int[]> findPotentialLinesWith(int player, int lineSize) {
-        List<int[]> potentialMoves = new ArrayList<>();
+    /**
+     * מציאת איומים על לוח זמני
+     */
+    private List<PatternThreat> findThreatsOnBoard(BitBoardRepresentation board) {
+        List<PatternThreat> threats = new ArrayList<>();
 
         // בדיקת שורות
-        for (int i = 0; i < 6; i++) {
-            checkPotentialLine(potentialMoves, i, 0, 0, 1, player, lineSize);
+        for (int row = 0; row < 6; row++) {
+            for (int startCol = 0; startCol <= 6 - WIN_LENGTH; startCol++) {
+                checkLineForThreatsOnBoard(threats, board, row, startCol, 0, 1);
+            }
         }
 
         // בדיקת עמודות
-        for (int j = 0; j < 6; j++) {
-            checkPotentialLine(potentialMoves, 0, j, 1, 0, player, lineSize);
-        }
-
-        // בדיקת אלכסונים (צד שמאל לימין)
-        for (int i = 0; i <= 1; i++) {
-            for (int j = 0; j <= 1; j++) {
-                checkPotentialLine(potentialMoves, i, j, 1, 1, player, lineSize);
+        for (int col = 0; col < 6; col++) {
+            for (int startRow = 0; startRow <= 6 - WIN_LENGTH; startRow++) {
+                checkLineForThreatsOnBoard(threats, board, startRow, col, 1, 0);
             }
         }
 
-        // בדיקת אלכסונים (צד ימין לשמאל)
-        for (int i = 0; i <= 1; i++) {
-            for (int j = 4; j <= 5; j++) {
-                checkPotentialLine(potentialMoves, i, j, 1, -1, player, lineSize);
+        // בדיקת אלכסונים (שמאל-למעלה לימין-למטה)
+        for (int row = 0; row <= 6 - WIN_LENGTH; row++) {
+            for (int col = 0; col <= 6 - WIN_LENGTH; col++) {
+                checkLineForThreatsOnBoard(threats, board, row, col, 1, 1);
             }
         }
 
-        return potentialMoves;
-    }
-
-    // בדיקה ספציפית של קו פוטנציאלי (שורה, עמודה או אלכסון)
-    private void checkPotentialLine(List<int[]> moves, int startRow, int startCol, int rowInc, int colInc, int player, int lineSize) {
-        int emptyCount = 0;
-        int playerCount = 0;
-        int[] emptyPos = null;
-
-        // בדיקת 5 משבצות ברצף
-        for (int k = 0; k < 5; k++) {
-            int r = startRow + k * rowInc;
-            int c = startCol + k * colInc;
-
-            // ודא שהקואורדינטות בגבולות הלוח
-            if (r < 0 || r >= 6 || c < 0 || c >= 6) {
-                return;
-            }
-
-            int piece = getPieceAt(r, c);
-            if (piece == -1) {
-                emptyCount++;
-                emptyPos = new int[]{r, c};
-            } else if (piece == player) {
-                playerCount++;
-            } else {
-                // אם יש כלי של היריב, הקו הזה לא רלוונטי
-                return;
-            }
-        }
-
-        // אם יש בדיוק משבצת ריקה אחת והשאר הן כלי השחקן בכמות הנדרשת
-        if (emptyCount == 1 && playerCount == lineSize) {
-            moves.add(emptyPos);
-        }
-    }
-
-    // ספירת איומים ברמת 4 כלים ברצף
-    private int countThreats(BitBoardRepresentation board, int player) {
-        int threats = 0;
-
-        // בדיקת שורות
-        for (int i = 0; i < 6; i++) {
-            threats += countThreatsInLine(board, i, 0, 0, 1, player);
-        }
-
-        // בדיקת עמודות
-        for (int j = 0; j < 6; j++) {
-            threats += countThreatsInLine(board, 0, j, 1, 0, player);
-        }
-
-        // בדיקת אלכסונים (שמאל לימין)
-        for (int i = 0; i <= 1; i++) {
-            for (int j = 0; j <= 1; j++) {
-                threats += countThreatsInLine(board, i, j, 1, 1, player);
-            }
-        }
-
-        // בדיקת אלכסונים (ימין לשמאל)
-        for (int i = 0; i <= 1; i++) {
-            for (int j = 4; j <= 5; j++) {
-                threats += countThreatsInLine(board, i, j, 1, -1, player);
+        // בדיקת אלכסונים (ימין-למעלה לשמאל-למטה)
+        for (int row = 0; row <= 6 - WIN_LENGTH; row++) {
+            for (int col = WIN_LENGTH - 1; col < 6; col++) {
+                checkLineForThreatsOnBoard(threats, board, row, col, 1, -1);
             }
         }
 
         return threats;
     }
 
-    // ספירת איומים בקו ספציפי
-    private int countThreatsInLine(BitBoardRepresentation board, int startRow, int startCol, int rowInc, int colInc, int player) {
-        int playerCount = 0;
-        int emptyCount = 0;
+    /**
+     * בדיקת קו (שורה/עמודה/אלכסון) על לוח זמני ואיתור איומים
+     */
+    private void checkLineForThreatsOnBoard(List<PatternThreat> threats, BitBoardRepresentation board,
+                                            int startRow, int startCol, int rowDelta, int colDelta) {
+        int[] counts = new int[2]; // ספירת כלים לכל שחקן
+        List<int[]> positions = new ArrayList<>();
+        List<int[]> emptyPositions = new ArrayList<>();
 
-        // בדיקת 5 משבצות ברצף
-        for (int k = 0; k < 5; k++) {
-            int r = startRow + k * rowInc;
-            int c = startCol + k * colInc;
+        // בדיקת קו באורך WIN_LENGTH
+        for (int i = 0; i < WIN_LENGTH; i++) {
+            int row = startRow + i * rowDelta;
+            int col = startCol + i * colDelta;
 
-            // ודא שהקואורדינטות בגבולות הלוח
-            if (r < 0 || r >= 6 || c < 0 || c >= 6) {
-                return 0;
+            int piece = getPieceAtFromBoard(board, row, col);
+
+            if (piece == 0 || piece == 1) {
+                counts[piece]++;
+                positions.add(new int[]{row, col});
+            } else { // משבצת ריקה
+                emptyPositions.add(new int[]{row, col});
             }
+        }
 
-            int piece = board.getPieceAt(r, c);
-            if (piece == player) {
-                playerCount++;
-            } else if (piece == -1) {
-                emptyCount++;
+        // יצירת איום לשחקן שיש לו כלים בקו (אם יש מספיק כלים)
+        for (int player = 0; player < 2; player++) {
+            if (counts[player] >= 2 && counts[1-player] == 0) {
+                PatternThreat threat = new PatternThreat(player, counts[player]);
+
+                // מספר הכיוון (שורה=0, עמודה=1, אלכסון=2, אלכסון נגדי=3)
+                if (rowDelta == 0) threat.direction = 0;
+                else if (colDelta == 0) threat.direction = 1;
+                else if (colDelta > 0) threat.direction = 2;
+                else threat.direction = 3;
+
+                // הוספת המיקומים לאיום
+                for (int[] pos : positions) {
+                    if (getPieceAtFromBoard(board, pos[0], pos[1]) == player) {
+                        threat.positions.add(pos);
+                    }
+                }
+
+                // הוספת המיקומים הפנויים
+                threat.openEnds.addAll(emptyPositions);
+
+                // הוספת האיום לרשימה
+                threats.add(threat);
+            }
+        }
+    }
+
+    /**
+     * הערכת דפוס אסטרטגי על לוח זמני
+     */
+    private int evaluatePatternOnBoard(BitBoardRepresentation board, List<int[]> pattern) {
+        int playerPieces = 0;
+        int opponentPieces = 0;
+        int emptySpaces = 0;
+
+        for (int[] pos : pattern) {
+            int piece = getPieceAtFromBoard(board, pos[0], pos[1]);
+            if (piece == playerNumber) {
+                playerPieces++;
+            } else if (piece == opponentNumber) {
+                opponentPieces++;
             } else {
-                // אם יש כלי של היריב, הקו הזה לא רלוונטי
-                return 0;
+                emptySpaces++;
             }
         }
 
-        // מחזיר 1 אם יש 4 כלים של השחקן ומשבצת ריקה אחת
-        return (playerCount == 4 && emptyCount == 1) ? 1 : 0;
+        // אם יש יותר מדי כלים של היריב, הדפוס לא שימושי
+        if (opponentPieces > pattern.size() / 3) {
+            return 0;
+        }
+
+        // חישוב ציון בסיסי - כמה הדפוס כבר מפותח
+        int score = playerPieces * 15;
+
+        // בונוס אם יש הרבה מקום להתפתח
+        score += emptySpaces * 3;
+
+        // בונוס אם יש כבר יותר מכלי אחד בדפוס
+        if (playerPieces > 1) {
+            score += playerPieces * 10;
+        }
+
+        return score;
     }
 
     //
-    // 10. פונקציות עזר לספירת כלים ברביעים
+    // 10. פונקציות עזר
     //
 
-    // ספירת כלים ברביע
+    /**
+     * בדיקה אם משבצות המרכז פנויות
+     */
+    private boolean isCenterAvailable() {
+        int[][] centerPositions = {
+                {2, 2}, {2, 3}, {3, 2}, {3, 3}
+        };
+
+        for (int[] pos : centerPositions) {
+            if (getPieceAt(pos[0], pos[1]) == -1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * בדיקה אם יש הזדמנות לבניית דפוס
+     */
+    private boolean hasPatternOpportunity() {
+        for (List<int[]> pattern : strategicPatterns.values()) {
+            int playerPieces = 0;
+            int opponentPieces = 0;
+
+            for (int[] pos : pattern) {
+                int piece = getPieceAt(pos[0], pos[1]);
+                if (piece == playerNumber) {
+                    playerPieces++;
+                } else if (piece == opponentNumber) {
+                    opponentPieces++;
+                }
+            }
+
+            // אם כבר יש לנו כלים בדפוס והיריב לא חסם יותר מדי
+            if (playerPieces >= 2 && opponentPieces <= pattern.size() / 4) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * בדיקה אם יש הזדמנות התקפית
+     */
+    private boolean hasOffensiveOpportunity() {
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == playerNumber && threat.count >= 3) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * בדיקה אם יש דפוסים פתוחים שאפשר להרחיב
+     */
+    private boolean hasOpenPatterns() {
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == playerNumber && threat.count >= 2 && !threat.openEnds.isEmpty()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * בדיקה אם קיים רצף מנצח על לוח
+     */
+    private boolean checkWinningLine(BitBoardRepresentation board, int player) {
+        return board.hasWinningLine(player);
+    }
+
+    /**
+     * ספירת כלים בסמיכות לנקודה
+     */
+    private int countAdjacentPieces(int row, int col, int player) {
+        int count = 0;
+
+        // בדיקת 8 השכנים
+        for (int dr = -1; dr <= 1; dr++) {
+            for (int dc = -1; dc <= 1; dc++) {
+                if (dr == 0 && dc == 0) continue;
+
+                int r = row + dr;
+                int c = col + dc;
+
+                if (r >= 0 && r < 6 && c >= 0 && c < 6) {
+                    if (getPieceAt(r, c) == player) {
+                        count++;
+                    }
+                }
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * ספירת כלים ברביע
+     */
     private int countPiecesInQuadrant(BitBoardRepresentation board, int quadrant) {
-        int count = 0;
         int startRow = (quadrant / 2) * 3;
         int startCol = (quadrant % 2) * 3;
+        int count = 0;
 
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                if (board.getPieceAt(startRow + i, startCol + j) != -1) {
+        for (int r = 0; r < 3; r++) {
+            for (int c = 0; c < 3; c++) {
+                if (getPieceAtFromBoard(board, startRow + r, startCol + c) != -1) {
                     count++;
                 }
             }
@@ -1325,83 +1378,54 @@ public class PentagoAI {
         return count;
     }
 
-    // ספירת כלים של שחקן ספציפי ברביע
-    private int countPlayerPiecesInQuadrant(BitBoardRepresentation board, int quadrant, int player) {
-        int count = 0;
-        int startRow = (quadrant / 2) * 3;
-        int startCol = (quadrant % 2) * 3;
+    /**
+     * קבלת כלי במיקום מסוים בלוח
+     */
+    private int getPieceAt(int row, int col) {
+        return model.getBoard().getPieceAt(row, col);
+    }
 
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                if (board.getPieceAt(startRow + i, startCol + j) == player) {
-                    count++;
+    /**
+     * קבלת כלי במיקום מסוים בלוח זמני
+     */
+    private int getPieceAtFromBoard(BitBoardRepresentation board, int row, int col) {
+        return board.getPieceAt(row, col);
+    }
+
+    /**
+     * יצירת עותק של הלוח הנוכחי
+     */
+    private BitBoardRepresentation cloneCurrentBoard() {
+        BitBoardRepresentation original = model.getBoard();
+        BitBoardRepresentation clone = new BitBoardRepresentation();
+
+        // העתקת מצב הלוח
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 6; j++) {
+                int piece = original.getPieceAt(i, j);
+                if (piece != -1) {
+                    clone.placePiece(i * 6 + j, piece);
                 }
             }
         }
 
-        return count;
+        return clone;
     }
 
-    //
-    // 11. פונקציות עזר ותשתית
-    //
-
-    // קבלת כל המהלכים האפשריים
-    private List<int[]> getAllPossibleMoves() {
+    /**
+     * קבלת כל המהלכים האפשריים
+     */
+    private List<int[]> getAvailableMoves() {
         List<int[]> moves = new ArrayList<>();
-        BitBoardRepresentation board = model.getBoard();
 
         for (int i = 0; i < 6; i++) {
             for (int j = 0; j < 6; j++) {
-                if (board.isPositionEmpty(i * 6 + j)) {
+                if (getPieceAt(i, j) == -1) {
                     moves.add(new int[]{i, j});
                 }
             }
         }
 
         return moves;
-    }
-
-    // יצירת מודל זמני לסימולציות
-    private PentagoModel createTempModel() {
-        PentagoModel tempModel = new PentagoModel();
-        BitBoardRepresentation originalBoard = model.getBoard();
-        BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-        // העתקת מצב הלוח
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                int piece = originalBoard.getPieceAt(i, j);
-                if (piece != -1) {
-                    tempBoard.placePiece(i * 6 + j, piece);
-                }
-            }
-        }
-
-        return tempModel;
-    }
-
-    // יצירת מודל זמני על בסיס מודל קיים
-    private PentagoModel createTempModelFrom(PentagoModel sourceModel) {
-        PentagoModel tempModel = new PentagoModel();
-        BitBoardRepresentation sourceBoard = sourceModel.getBoard();
-        BitBoardRepresentation tempBoard = tempModel.getBoard();
-
-        // העתקת מצב הלוח
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                int piece = sourceBoard.getPieceAt(i, j);
-                if (piece != -1) {
-                    tempBoard.placePiece(i * 6 + j, piece);
-                }
-            }
-        }
-
-        return tempModel;
-    }
-
-    // קבלת ערך במיקום מסוים בלוח
-    private int getPieceAt(int row, int col) {
-        return model.getBoard().getPieceAt(row, col);
     }
 }
