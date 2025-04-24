@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * בינה מלאכותית מתקדמת למשחק פנטגו
+ * בינה מלאכותית
  */
 public class PentagoAI {
 
