@@ -150,7 +150,7 @@ public class PentagoAI {
      */
     public PentagoAI(PentagoModel model) {
         this.model = model;
-        this.playerNumber = 1; // ברירת מחדל - שחקן 1 (לבן)
+        this.playerNumber = 1; // ברירת מחדל - שחקן 1 (אדום)
         this.opponentNumber = 0;
         this.random = new Random();
         this.currentState = AIState.CONTROL_CENTER; // מצב התחלתי
