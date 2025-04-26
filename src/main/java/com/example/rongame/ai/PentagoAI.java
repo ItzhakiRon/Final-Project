@@ -263,6 +263,12 @@ public class PentagoAI {
 
         int[] move;
 
+        // בדיקה חדשה: תמיד בדוק קודם אם יש מהלך קריטי להגנה או התקפה
+        int[] criticalMove = findCriticalMove();
+        if (criticalMove != null) {
+            return criticalMove;
+        }
+
         // בחירת המהלך המתאים למצב הנוכחי
         switch (currentState) {
             case OFFENSE:
@@ -285,7 +291,85 @@ public class PentagoAI {
                 break;
         }
 
+        // בדיקה סופית שהמהלך שנבחר לא מתעלם מאיום ברור
+        move = validateMove(move);
+
         return move;
+    }
+
+    // פונקציה לאיתור מהלכים קריטיים שעלולים להיות חשובים יותר מהמצב הנוכחי
+    private int[] findCriticalMove() {
+        // 1. בדיקה אם אנחנו יכולים לנצח במהלך אחד
+        List<int[]> availableMoves = getAvailableMoves();
+        for (int[] move : availableMoves) {
+            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], playerNumber);
+
+            if (tempBoard.hasWinningLine(playerNumber)) {
+                return move; // מהלך מנצח - תמיד בחר בו
+            }
+        }
+
+        // 2. בדיקה אם היריב יכול לנצח במהלך הבא
+        for (int[] move : availableMoves) {
+            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
+
+            if (tempBoard.hasWinningLine(opponentNumber)) {
+                return move; // חסום מהלך מנצח של היריב
+            }
+        }
+
+        // 3. בדיקת רצפים חמורים של היריב (3+ כלים פתוחים משני הצדדים)
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == opponentNumber && threat.count >= 3 && threat.openEnds.size() >= 2) {
+                // בחר את האיבר הראשון ברשימת openEnds
+                return threat.openEnds.get(0);
+            }
+        }
+
+        // 4. בדיקה אם יש לנו הזדמנות ליצור רצף של 4 פתוח
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == playerNumber && threat.count >= 3 && threat.openEnds.size() >= 2) {
+                return threat.openEnds.get(0); // נצל הזדמנות להתקפה חזקה
+            }
+        }
+
+        return null; // אין מהלך קריטי כרגע
+    }
+
+    // פונקציה לוידוא שהמהלך שנבחר הגיוני מבחינת הגנה/התקפה
+    private int[] validateMove(int[] proposedMove) {
+        // בדיקה אם המהלך המוצע מתעלם ממהלך הגנתי קריטי
+        int[] criticalMove = findCriticalMove();
+        if (criticalMove != null) {
+            // אם יש מהלך קריטי והוא שונה מהמהלך המוצע, השתמש במהלך הקריטי
+            if (proposedMove[0] != criticalMove[0] || proposedMove[1] != criticalMove[1]) {
+                return criticalMove;
+            }
+        }
+
+        // בדיקה אם המהלך המוצע מתעלם מאיום ברור של 3+ כלים
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == opponentNumber && threat.count >= 3 && !threat.openEnds.isEmpty()) {
+                boolean proposedMoveBlocksThreat = false;
+
+                // בדיקה אם המהלך המוצע חוסם את האיום
+                for (int[] blockPos : threat.openEnds) {
+                    if (proposedMove[0] == blockPos[0] && proposedMove[1] == blockPos[1]) {
+                        proposedMoveBlocksThreat = true;
+                        break;
+                    }
+                }
+
+                // אם המהלך המוצע לא חוסם את האיום, בדוק אם יש איום גדול יותר
+                if (!proposedMoveBlocksThreat && threat.count >= 4) {
+                    return threat.openEnds.get(0); // חסום רצף של 4 כלים
+                }
+            }
+        }
+
+        return proposedMove; // המהלך המוצע בסדר
     }
 
     /**
@@ -295,10 +379,22 @@ public class PentagoAI {
     public int[] makeRotation() {
         updateThreats();
 
+        // בדיקה חדשה - האם יש סיבוב שיכול למנוע מהיריב לנצח במהלך הבא
+        int[] emergencyRotation = findEmergencyRotation();
+        if (emergencyRotation != null) {
+            return emergencyRotation;
+        }
+
         // בדיקת סיבובים אסטרטגיים
         int[] winningRotation = findWinningRotation();
         if (winningRotation != null) {
-            return winningRotation;
+            // בדיקה שהסיבוב לא יוצר רצף מנצח ליריב
+            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            tempBoard.rotateQuadrant(winningRotation[0], winningRotation[1] == 1);
+
+            if (!tempBoard.hasWinningLine(opponentNumber)) {
+                return winningRotation;
+            }
         }
 
         int[] blockingRotation = findBlockingRotation();
@@ -307,6 +403,73 @@ public class PentagoAI {
         }
 
         return findStrategicRotation();
+    }
+
+    // פונקציה לחיפוש סיבוב שימנע הפסד במהלך הבא
+    private int[] findEmergencyRotation() {
+        // בדיקה אם ללא סיבוב היריב יכול לנצח במהלך הבא
+        List<int[]> availableMoves = getAvailableMoves();
+
+        // אם יש לפחות משבצת אחת פנויה, בדוק אם היריב יכול לנצח
+        if (!availableMoves.isEmpty()) {
+            BitBoardRepresentation noRotationBoard = cloneCurrentBoard();
+
+            // בדיקת כל המהלכים האפשריים של היריב
+            for (int[] move : availableMoves) {
+                BitBoardRepresentation afterOpponentMove = cloneBoard(noRotationBoard);
+                afterOpponentMove.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
+
+                if (afterOpponentMove.hasWinningLine(opponentNumber)) {
+                    // היריב יכול לנצח במהלך הבא! יש לחפש סיבוב שימנע זאת
+
+                    for (int quadrant = 0; quadrant < 4; quadrant++) {
+                        for (int direction = 0; direction < 2; direction++) {
+                            boolean clockwise = (direction == 1);
+
+                            BitBoardRepresentation rotatedBoard = cloneCurrentBoard();
+                            rotatedBoard.rotateQuadrant(quadrant, clockwise);
+
+                            boolean opponentCanStillWin = false;
+
+                            // בדיקה אם אחרי הסיבוב היריב עדיין יכול לנצח
+                            for (int[] opMove : getAvailableMoves(rotatedBoard)) {
+                                BitBoardRepresentation afterRotationAndMove = cloneBoard(rotatedBoard);
+                                afterRotationAndMove.placePiece(opMove[0] * BOARD_SIZE + opMove[1], opponentNumber);
+
+                                if (afterRotationAndMove.hasWinningLine(opponentNumber)) {
+                                    opponentCanStillWin = true;
+                                    break;
+                                }
+                            }
+
+                            // אם סיבוב זה מונע ניצחון של היריב, השתמש בו
+                            if (!opponentCanStillWin) {
+                                return new int[]{quadrant, direction};
+                            }
+                        }
+                    }
+
+                    break; // נמצא מהלך מנצח ליריב אבל לא נמצא סיבוב שמונע אותו
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // פונקציית עזר לקבלת מהלכים אפשריים מלוח ספציפי
+    private List<int[]> getAvailableMoves(BitBoardRepresentation board) {
+        List<int[]> moves = new ArrayList<>();
+
+        for (int i = 0; i < BOARD_SIZE; i++) {
+            for (int j = 0; j < BOARD_SIZE; j++) {
+                if (board.getPieceAt(i, j) == -1) {
+                    moves.add(new int[]{i, j});
+                }
+            }
+        }
+
+        return moves;
     }
 
     /**
@@ -342,9 +505,14 @@ public class PentagoAI {
      * עדכון מצב ה-FSM בהתבסס על מצב הלוח הנוכחי
      */
     private void determineState() {
-        // בדיקת איומים וקביעת מצב בהתאם לעדיפויות
+        // בדיקת קריטית - אם יש רצף של היריב שיכול להוביל לניצחון, עבור מיד למצב הגנה
+        boolean criticalThreatExists = checkForCriticalThreats();
+        if (criticalThreatExists) {
+            currentState = AIState.DEFENSE;
+            return;
+        }
 
-        // עדיפות 1: איתור ניצחון מיידי
+        // עדיפות 1: איתור ניצחון מיידי שלנו
         if (hasWinningMove(playerNumber)) {
             currentState = AIState.OFFENSE;
             return;
@@ -356,27 +524,33 @@ public class PentagoAI {
             return;
         }
 
-        // עדיפות 3: בתחילת המשחק, התמקד במרכז או בפינות
+        // עדיפות חדשה 3: חסימת רצפים מסוכנים של 3+ כלים פתוחים משני הצדדים
+        if (hasOpenEndedSequence(opponentNumber, 3)) {
+            currentState = AIState.DEFENSE;
+            return;
+        }
+
+        // עדיפות 4: יצירת רצף מסוכן שלנו של 3+ פתוח משני הצדדים
+        if (hasOpenEndedSequence(playerNumber, 3)) {
+            currentState = AIState.OFFENSE;
+            return;
+        }
+
+        // עדיפות 5: בתחילת המשחק, התמקד במרכז או בפינות
         if (turnCount <= 3) {
             currentState = isCenterAvailable() ?
                     AIState.CONTROL_CENTER : AIState.CONTROL_CORNERS;
             return;
         }
 
-        // עדיפות 4: בדוק אם יש הזדמנות לבניית דפוס
+        // עדיפות 6: בדוק אם יש הזדמנות לבניית דפוס
         if (hasPatternOpportunity()) {
             currentState = AIState.BUILD_PATTERN;
             return;
         }
 
-        // עדיפות 5: בדוק הזדמנות התקפית
+        // עדיפות 7: בדוק הזדמנות התקפית
         if (hasOffensiveOpportunity()) {
-            currentState = AIState.OFFENSE;
-            return;
-        }
-
-        // עדיפות 6: במשחק מתקדם, בדוק דפוסים פתוחים
-        if (turnCount > 8 && hasOpenPatterns()) {
             currentState = AIState.OFFENSE;
             return;
         }
@@ -386,15 +560,100 @@ public class PentagoAI {
                 AIState.CONTROL_CENTER : AIState.CONTROL_CORNERS;
     }
 
+    // פונקציה חדשה לבדיקת רצפים מסוכנים במיוחד
+    private boolean checkForCriticalThreats() {
+        // בדיקה אם יש רצפים מסוכנים של היריב
+        for (PatternThreat threat : currentThreats) {
+            // איתור רצפים של 3+ כלים עם אפשרות להשלים ל-5
+            if (threat.player == opponentNumber && threat.count >= 3) {
+                // בדיקה אם הרצף פתוח משני צדדים או יותר
+                if (threat.openEnds.size() >= 2) {
+                    return true;
+                }
+
+                // או אם יש כבר 4 כלים עם צד פתוח אחד
+                if (threat.count >= 4 && threat.openEnds.size() >= 1) {
+                    return true;
+                }
+            }
+        }
+
+        // בדיקת סימולציה - אם יש מהלך של היריב שיוצר רצף מסוכן
+        List<int[]> availableMoves = getAvailableMoves();
+        for (int[] move : availableMoves) {
+            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
+
+            List<PatternThreat> simulatedThreats = findThreatsOnBoard(tempBoard);
+            for (PatternThreat threat : simulatedThreats) {
+                // אם נוצר רצף של 4 עם צד פתוח או 3 עם שני צדדים פתוחים
+                if (threat.player == opponentNumber) {
+                    if ((threat.count >= 4 && threat.openEnds.size() >= 1) ||
+                            (threat.count >= 3 && threat.openEnds.size() >= 2)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // פונקציה לבדיקת רצף פתוח משני הצדדים של שחקן מסוים
+    private boolean hasOpenEndedSequence(int player, int minCount) {
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == player && threat.count >= minCount && threat.openEnds.size() >= 2) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * בדיקה אם יש מהלך מנצח לשחקן
      */
     private boolean hasWinningMove(int player) {
-        for (PatternThreat threat : currentThreats) {
-            if (threat.player == player && threat.count >= 4 && !threat.openEnds.isEmpty()) {
+        // בדיקה ישירה - האם מהלך אחד יכול להוביל לניצחון
+        List<int[]> availableMoves = getAvailableMoves();
+        for (int[] move : availableMoves) {
+            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], player);
+
+            if (tempBoard.hasWinningLine(player)) {
                 return true;
             }
         }
+
+        // בדיקת איומים גם של רצפים כמעט מלאים
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == player) {
+                // אם יש רצף של 4 כלים והוא פתוח לפחות מצד אחד
+                if (threat.count >= 4 && !threat.openEnds.isEmpty()) {
+                    return true;
+                }
+
+                // בדיקת רצפים של 3 פתוחים משני הצדדים - גם מסוכנים מאוד
+                if (threat.count >= 3 && threat.openEnds.size() >= 2) {
+                    // בדיקה שזה רצף רציף ללא חורים
+                    boolean contiguous = true;
+                    for (int i = 1; i < threat.positions.size() && contiguous; i++) {
+                        // בדיקה שהמיקומים צמודים (בהתאם לכיוון)
+                        int[] prev = threat.positions.get(i-1);
+                        int[] curr = threat.positions.get(i);
+
+                        int[] dir = DIRECTIONS[threat.direction];
+                        if (prev[0] + dir[0] != curr[0] || prev[1] + dir[1] != curr[1]) {
+                            contiguous = false;
+                        }
+                    }
+
+                    if (contiguous) {
+                        return true; // רצף רציף פתוח משני הצדדים - מאוד מסוכן
+                    }
+                }
+            }
+        }
+
         return false;
     }
 
@@ -505,45 +764,218 @@ public class PentagoAI {
             int rowDelta, int colDelta,
             int direction) {
 
+        // שיטה משופרת לבדיקת רצפים - נבדוק חלון נע בגודל להכיל עד 7 משבצות (WIN_LENGTH + 2)
+
+        // ראשית - בדיקה לאורך הקו הרגיל (5 משבצות)
         int[] counts = {0, 0}; // ספירת כלים לכל שחקן
         List<int[]> positions = new ArrayList<>();
         List<int[]> emptyPositions = new ArrayList<>();
 
-        // בדיקת קו באורך WIN_LENGTH
         for (int i = 0; i < WIN_LENGTH; i++) {
             int row = startRow + i * rowDelta;
             int col = startCol + i * colDelta;
 
-            int piece = getPieceAtFromBoard(board, row, col);
+            if (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE) {
+                int piece = getPieceAtFromBoard(board, row, col);
 
-            if (piece == 0 || piece == 1) {
-                counts[piece]++;
-                positions.add(new int[]{row, col});
-            } else { // משבצת ריקה
-                emptyPositions.add(new int[]{row, col});
+                if (piece == 0 || piece == 1) {
+                    counts[piece]++;
+                    positions.add(new int[]{row, col});
+                } else { // משבצת ריקה
+                    emptyPositions.add(new int[]{row, col});
+                }
             }
         }
 
-        // יצירת איום לשחקן שיש לו כלים בקו (אם יש מספיק כלים)
+        // בדיקת משבצות נוספות לפני ואחרי הרצף לזיהוי פתיחות
+        int prevRow = startRow - rowDelta;
+        int prevCol = startCol - colDelta;
+        boolean hasOpenStart = false;
+
+        if (prevRow >= 0 && prevRow < BOARD_SIZE && prevCol >= 0 && prevCol < BOARD_SIZE) {
+            if (getPieceAtFromBoard(board, prevRow, prevCol) == -1) {
+                hasOpenStart = true;
+                emptyPositions.add(new int[]{prevRow, prevCol});
+            }
+        }
+
+        int nextRow = startRow + WIN_LENGTH * rowDelta;
+        int nextCol = startCol + WIN_LENGTH * colDelta;
+        boolean hasOpenEnd = false;
+
+        if (nextRow >= 0 && nextRow < BOARD_SIZE && nextCol >= 0 && nextCol < BOARD_SIZE) {
+            if (getPieceAtFromBoard(board, nextRow, nextCol) == -1) {
+                hasOpenEnd = true;
+                emptyPositions.add(new int[]{nextRow, nextCol});
+            }
+        }
+
+        // עיבוד הרצפים הרגילים
         for (int player = 0; player < 2; player++) {
             if (counts[player] >= 2 && counts[1-player] == 0) {
                 PatternThreat threat = new PatternThreat(player, counts[player]);
                 threat.direction = direction;
 
-                // הוספת המיקומים לאיום
                 for (int[] pos : positions) {
                     if (getPieceAtFromBoard(board, pos[0], pos[1]) == player) {
                         threat.positions.add(pos);
                     }
                 }
 
-                // הוספת המיקומים הפנויים
                 threat.openEnds.addAll(emptyPositions);
 
-                // הוספת האיום לרשימה
+                // הגברת הציון עבור רצפים פתוחים משני הצדדים
+                switch(threat.count) {
+                    case 4:
+                        threat.score = LINE_4_SCORE * (hasOpenStart && hasOpenEnd ? 4 : 1);
+                        break;
+                    case 3:
+                        threat.score = LINE_3_SCORE * (hasOpenStart && hasOpenEnd ? 3 : 1);
+                        break;
+                    case 2:
+                        threat.score = LINE_2_SCORE * (hasOpenStart && hasOpenEnd ? 2 : 1);
+                        break;
+                    default:
+                        threat.score = 0;
+                }
+
+                // בדיקה אם משבצות הפתח רצופות או מפוצלות
+                if (emptyPositions.size() >= 2) {
+                    boolean contiguousEmptySpaces = false;
+
+                    for (int i = 0; i < emptyPositions.size() - 1; i++) {
+                        int[] pos1 = emptyPositions.get(i);
+                        int[] pos2 = emptyPositions.get(i + 1);
+
+                        if (Math.abs(pos1[0] - pos2[0]) == Math.abs(rowDelta) &&
+                                Math.abs(pos1[1] - pos2[1]) == Math.abs(colDelta)) {
+                            contiguousEmptySpaces = true;
+                            break;
+                        }
+                    }
+
+                    if (contiguousEmptySpaces) {
+                        // רצפים עם שני מקומות פנויים רצופים פחות מסוכנים
+                        threat.score = (int)(threat.score * 0.8);
+                    }
+                }
+
                 threats.add(threat);
             }
         }
+
+        // חיפוש מורחב - בדיקה של חלונות בגודל 7 לזיהוי רצפים ארוכים יותר או עם חללים
+        for (int windowStart = -1; windowStart <= 1; windowStart++) {
+            int windowStartRow = startRow + windowStart * rowDelta;
+            int windowStartCol = startCol + windowStart * colDelta;
+
+            // בדיקת תקינות גבולות החלון
+            boolean windowValid = true;
+            for (int i = 0; i < WIN_LENGTH + 2 && windowValid; i++) {
+                int r = windowStartRow + i * rowDelta;
+                int c = windowStartCol + i * colDelta;
+
+                if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) {
+                    windowValid = false;
+                }
+            }
+
+            if (!windowValid) continue;
+
+            // בדיקת החלון המורחב
+            int[] extCounts = {0, 0};
+            List<int[]> extPositions = new ArrayList<>();
+            List<int[]> extEmptyPositions = new ArrayList<>();
+
+            for (int i = 0; i < WIN_LENGTH + 2; i++) {
+                int r = windowStartRow + i * rowDelta;
+                int c = windowStartCol + i * colDelta;
+
+                int piece = getPieceAtFromBoard(board, r, c);
+                if (piece == 0 || piece == 1) {
+                    extCounts[piece]++;
+                    extPositions.add(new int[]{r, c});
+                } else { // משבצת ריקה
+                    extEmptyPositions.add(new int[]{r, c});
+                }
+            }
+
+            // רק אם יש רצף של שחקן אחד ללא כלים של השחקן השני
+            for (int player = 0; player < 2; player++) {
+                if (extCounts[player] >= 3 && extCounts[1-player] == 0) {
+                    PatternThreat extThreat = new PatternThreat(player, extCounts[player]);
+                    extThreat.direction = direction;
+
+                    for (int[] pos : extPositions) {
+                        if (getPieceAtFromBoard(board, pos[0], pos[1]) == player) {
+                            extThreat.positions.add(pos);
+                        }
+                    }
+
+                    extThreat.openEnds.addAll(extEmptyPositions);
+
+                    // חישוב ציון מוגבר לרצפים ארוכים/מסוכנים
+                    if (extThreat.count >= 4) {
+                        extThreat.score = LINE_4_SCORE * 2;
+                    } else if (extThreat.count == 3 && extThreat.openEnds.size() >= 2) {
+                        extThreat.score = LINE_3_SCORE * 2;
+                    } else {
+                        extThreat.score = extThreat.count * 50;
+                    }
+
+                    // בונוס למיקומים אסטרטגיים
+                    boolean nearCenter = false;
+                    for (int[] pos : extThreat.positions) {
+                        if ((pos[0] >= 1 && pos[0] <= 4) && (pos[1] >= 1 && pos[1] <= 4)) {
+                            nearCenter = true;
+                            break;
+                        }
+                    }
+
+                    if (nearCenter) {
+                        extThreat.score = (int)(extThreat.score * 1.2);
+                    }
+
+                    // הוספה רק אם התבנית לא נכללת כבר
+                    boolean alreadyExists = false;
+                    for (PatternThreat existing : threats) {
+                        if (existing.player == player &&
+                                existing.direction == direction &&
+                                hasSignificantOverlap(existing.positions, extThreat.positions)) {
+                            alreadyExists = true;
+
+                            // אם התבנית החדשה טובה יותר, עדכן את הקיימת
+                            if (extThreat.score > existing.score) {
+                                existing.score = extThreat.score;
+                                existing.openEnds.clear();
+                                existing.openEnds.addAll(extThreat.openEnds);
+                            }
+                            break;
+                        }
+                    }
+
+                    if (!alreadyExists) {
+                        threats.add(extThreat);
+                    }
+                }
+            }
+        }
+    }
+
+    // פונקציית עזר לבדיקת חפיפה בין שתי רשימות מיקומים
+    private boolean hasSignificantOverlap(List<int[]> list1, List<int[]> list2) {
+        int overlap = 0;
+        for (int[] pos1 : list1) {
+            for (int[] pos2 : list2) {
+                if (pos1[0] == pos2[0] && pos1[1] == pos2[1]) {
+                    overlap++;
+                    if (overlap >= Math.min(list1.size(), list2.size()) / 2) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -553,7 +985,7 @@ public class PentagoAI {
         // ציון בסיסי לפי מספר הכלים ברצף
         switch (threat.count) {
             case 4:
-                threat.score = LINE_4_SCORE;
+                threat.score = LINE_4_SCORE * 2; // הגדלת הציון לרצף של 4
                 break;
             case 3:
                 threat.score = LINE_3_SCORE;
@@ -570,8 +1002,13 @@ public class PentagoAI {
             threat.score *= 1.2; // 20% יותר ערך לאיומים שלנו
         }
 
-        // בונוס לפי מספר הסופים הפתוחים (יותר אפשרויות להשלמה)
-        threat.score *= (1 + 0.2 * threat.openEnds.size());
+        // בונוס משמעותי אם יש שני סופים פתוחים
+        if (threat.openEnds.size() >= 2) {
+            threat.score *= 2.0; // הכפלת הציון לרצף פתוח משני הצדדים
+        } else {
+            // בונוס רגיל לפי מספר הסופים הפתוחים
+            threat.score *= (1 + 0.2 * threat.openEnds.size());
+        }
 
         // בונוס לפי מיקום האיום (אלכסונים מרכזיים מקבלים בונוס)
         if ((threat.direction == 2 || threat.direction == 3) &&
@@ -603,14 +1040,54 @@ public class PentagoAI {
         // ניסיון למצוא מהלך מנצח
         for (PatternThreat threat : currentThreats) {
             if (threat.player == playerNumber && threat.count >= 4 && !threat.openEnds.isEmpty()) {
-                return threat.openEnds.get(0);
+                return threat.openEnds.get(0); // זה מהלך מנצח שלנו
             }
         }
 
-        // אחרת, חפש את המהלך ההתקפי הטוב ביותר
+        // חיפוש רצף של היריב עם 4 כלים - חייבים לחסום
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == opponentNumber && threat.count >= 4 && !threat.openEnds.isEmpty()) {
+                return threat.openEnds.get(0); // חסום ניצחון של היריב
+            }
+        }
+
+        // חיפוש רצפים פתוחים משני הצדדים עם 3 כלים או יותר
+        List<MoveEvaluation> openEndedMoves = new ArrayList<>();
+        for (PatternThreat threat : currentThreats) {
+            // בדיקה מיוחדת לרצפים פתוחים משני הצדדים
+            if (threat.player == playerNumber && threat.count >= 3 && threat.openEnds.size() >= 2) {
+                for (int[] pos : threat.openEnds) {
+                    // ניסיון לראות אם המהלך יוצר רצף מנצח
+                    BitBoardRepresentation tempBoard = cloneCurrentBoard();
+                    tempBoard.placePiece(pos[0] * BOARD_SIZE + pos[1], playerNumber);
+
+                    boolean createsWin = tempBoard.hasWinningLine(playerNumber);
+                    int score = threat.score * 2; // ציון כפול לרצפים פתוחים
+
+                    if (createsWin) {
+                        score *= 10; // בונוס גדול אם יוצר ניצחון
+                    }
+
+                    openEndedMoves.add(new MoveEvaluation(pos, score));
+                }
+            }
+        }
+
+        if (!openEndedMoves.isEmpty()) {
+            sortMoveEvaluations(openEndedMoves);
+            return openEndedMoves.get(0).move;
+        }
+
+        // חיפוש רצפים של היריב עם 3 כלים הפתוחים משני הצדדים - חשוב לחסום
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == opponentNumber && threat.count >= 3 && threat.openEnds.size() >= 2) {
+                return threat.openEnds.get(0); // חסום רצף פתוח משני הצדדים
+            }
+        }
+
+        // אחרת, חיפוש מהלכים התקפיים רגילים
         List<MoveEvaluation> potentialMoves = new ArrayList<>();
 
-        // הערכת מהלכים התקפיים לפי איומים קיימים
         for (PatternThreat threat : currentThreats) {
             if (threat.player == playerNumber && threat.count >= 2 && !threat.openEnds.isEmpty()) {
                 for (int[] movePos : threat.openEnds) {
@@ -621,7 +1098,6 @@ public class PentagoAI {
         }
 
         if (!potentialMoves.isEmpty()) {
-            // מיון המהלכים לפי ציון
             addRandomnessToPotentialMoves(potentialMoves);
             return potentialMoves.get(0).move;
         }
@@ -707,39 +1183,129 @@ public class PentagoAI {
      * בחירת מהלך במצב הגנה
      */
     private int[] getDefensiveMove() {
+        // 1. בדיקה אם היריב יכול לנצח במהלך הבא
+        List<int[]> availableMoves = getAvailableMoves();
+        for (int[] move : availableMoves) {
+            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
+
+            if (tempBoard.hasWinningLine(opponentNumber)) {
+                return move; // חייבים לחסום מהלך מנצח
+            }
+        }
+
+        // 2. מציאת רצפים מסוכנים - רצפים פתוחים משני הצדדים
         List<MoveEvaluation> defensiveMoves = new ArrayList<>();
 
-        // חיפוש איומים של היריב
+        // מציאת רצפים פתוחים משני הצדדים
         for (PatternThreat threat : currentThreats) {
-            if (threat.player == opponentNumber && threat.count >= 3 && !threat.openEnds.isEmpty()) {
+            if (threat.player == opponentNumber && threat.openEnds.size() >= 2) {
+                // הערכת רצף פתוח לפי מספר הכלים
+                int baseThreatScore;
+                switch (threat.count) {
+                    case 4:
+                        baseThreatScore = LINE_4_SCORE * 4; // מאוד מסוכן
+                        break;
+                    case 3:
+                        baseThreatScore = LINE_3_SCORE * 3; // מסוכן מאוד
+                        break;
+                    case 2:
+                        baseThreatScore = LINE_2_SCORE * 2;
+                        break;
+                    default:
+                        baseThreatScore = 0;
+                }
+
+                // הוספת כל נקודות החסימה האפשריות
                 for (int[] blockPos : threat.openEnds) {
-                    // הערכת מהלך הגנתי
-                    int blockScore = evaluateDefensivePosition(blockPos[0], blockPos[1]);
+                    int blockScore = baseThreatScore;
+
+                    // בדיקה אם החסימה הזו מונעת איומים נוספים
+                    BitBoardRepresentation afterBlockBoard = cloneCurrentBoard();
+                    afterBlockBoard.placePiece(blockPos[0] * BOARD_SIZE + blockPos[1], playerNumber);
+
+                    // בדיקה אם עדיין יש איומים לאחר החסימה
+                    List<PatternThreat> remainingThreats = findThreatsOnBoard(afterBlockBoard);
+                    boolean threatStillExists = false;
+
+                    for (PatternThreat remainingThreat : remainingThreats) {
+                        if (remainingThreat.player == opponentNumber &&
+                                remainingThreat.count >= threat.count &&
+                                hasSimilarDirection(remainingThreat, threat)) {
+                            threatStillExists = true;
+                            break;
+                        }
+                    }
+
+                    // בונוס אם החסימה הזו באמת אפקטיבית
+                    if (!threatStillExists) {
+                        blockScore *= 1.5;
+                    }
+
+                    // בדיקה אם החסימה יוצרת גם הזדמנות התקפית לנו
+                    int offensiveValue = evaluateOffensivePosition(blockPos[0], blockPos[1]);
+                    blockScore += offensiveValue / 2; // כמחצית מהערך ההתקפי
+
                     defensiveMoves.add(new MoveEvaluation(blockPos, blockScore));
                 }
             }
         }
 
-        if (!defensiveMoves.isEmpty()) {
-            // מיון מהלכים הגנתיים
-            sortMoveEvaluations(defensiveMoves);
+        // 3. חיפוש רצפים עם 3+ כלים שפתוחים מצד אחד
+        for (PatternThreat threat : currentThreats) {
+            if (threat.player == opponentNumber && threat.count >= 3 && threat.openEnds.size() >= 1) {
+                int baseThreatScore = threat.count * 100; // ציון בסיסי לפי מספר הכלים
 
-            // במקרה של שוויון, בחר את המהלך שגם מקדם אותנו
-            if (defensiveMoves.size() > 1 &&
-                    Math.abs(defensiveMoves.get(0).score - defensiveMoves.get(1).score) < 50) {
+                for (int[] blockPos : threat.openEnds) {
+                    int blockScore = baseThreatScore;
 
-                if (evaluateOffensivePosition(defensiveMoves.get(1).move[0],
-                        defensiveMoves.get(1).move[1]) >
-                        evaluateOffensivePosition(defensiveMoves.get(0).move[0],
-                                defensiveMoves.get(0).move[1])) {
-                    return defensiveMoves.get(1).move;
+                    // בדיקה אם גם מקדם אותנו
+                    int offensiveValue = evaluateOffensivePosition(blockPos[0], blockPos[1]);
+                    blockScore += offensiveValue / 3; // שליש מהערך ההתקפי
+
+                    defensiveMoves.add(new MoveEvaluation(blockPos, blockScore));
                 }
             }
+        }
+
+        // 4. בדיקת סימולציה - מה קורה אם היריב ישים כלי במקומות שונים
+        for (int[] move : availableMoves) {
+            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
+
+            List<PatternThreat> simulatedThreats = findThreatsOnBoard(tempBoard);
+            boolean createsDangerousPattern = false;
+
+            for (PatternThreat simulatedThreat : simulatedThreats) {
+                // בדיקה אם נוצר רצף מסוכן של 3+ פתוח או 4 עם פתח אחד
+                if (simulatedThreat.player == opponentNumber) {
+                    if ((simulatedThreat.count >= 3 && simulatedThreat.openEnds.size() >= 2) ||
+                            (simulatedThreat.count >= 4 && simulatedThreat.openEnds.size() >= 1)) {
+                        createsDangerousPattern = true;
+                        break;
+                    }
+                }
+            }
+
+            if (createsDangerousPattern) {
+                // אם זה יוצר דפוס מסוכן, הוסף אותו לרשימת מהלכים להגנה
+                int preemptiveBlockScore = 500; // ציון קבוע לחסימה מונעת
+                defensiveMoves.add(new MoveEvaluation(move, preemptiveBlockScore));
+            }
+        }
+
+        if (!defensiveMoves.isEmpty()) {
+            sortMoveEvaluations(defensiveMoves);
             return defensiveMoves.get(0).move;
         }
 
         // אם אין איומים מיידיים, נסה מהלך היברידי (הגנה + התקפה)
         return getHybridMove();
+    }
+
+    // פונקציית עזר לבדיקה אם שני איומים הם באותו כיוון
+    private boolean hasSimilarDirection(PatternThreat threat1, PatternThreat threat2) {
+        return threat1.direction == threat2.direction;
     }
 
     /**
@@ -1106,64 +1672,49 @@ public class PentagoAI {
      * מציאת סיבוב שיחסום ניצחון של היריב - משופר
      */
     private int[] findBlockingRotation() {
-        // בדיקה אם היריב יש לו ניצחון פוטנציאלי במצב הנוכחי
-        boolean opponentHasPotentialWin = false;
+        // בדוק אם סיבובים מסויימים יגרמו ליריב לנצח
+        List<int[]> dangerousRotations = new ArrayList<>();
 
-        // בדיקת כל הסיבובים האפשריים של היריב בתור הבא
         for (int quadrant = 0; quadrant < 4; quadrant++) {
             for (int direction = 0; direction < 2; direction++) {
                 boolean clockwise = (direction == 1);
 
-                BitBoardRepresentation simulatedBoard = cloneCurrentBoard();
-                simulatedBoard.rotateQuadrant(quadrant, clockwise);
+                BitBoardRepresentation tempBoard = cloneCurrentBoard();
+                tempBoard.rotateQuadrant(quadrant, clockwise);
 
-                if (simulatedBoard.hasWinningLine(opponentNumber)) {
-                    opponentHasPotentialWin = true;
-                    break;
+                if (tempBoard.hasWinningLine(opponentNumber)) {
+                    dangerousRotations.add(new int[]{quadrant, direction});
                 }
             }
-            if (opponentHasPotentialWin) break;
         }
 
-        // אם היריב יכול לנצח, חפש סיבוב שיחסום אותו
-        if (opponentHasPotentialWin) {
+        // אם יש סיבובים מסוכנים, מצא סיבוב בטוח
+        if (!dangerousRotations.isEmpty()) {
+            // בדוק את כל הסיבובים שאינם מסוכנים
             for (int quadrant = 0; quadrant < 4; quadrant++) {
                 for (int direction = 0; direction < 2; direction++) {
-                    boolean clockwise = (direction == 1);
+                    boolean isInDangerList = false;
 
-                    BitBoardRepresentation tempBoard = cloneCurrentBoard();
-                    tempBoard.rotateQuadrant(quadrant, clockwise);
-
-                    boolean opponentCanWinAfterOurRotation = false;
-
-                    // בדיקת כל האפשרויות של היריב לאחר הסיבוב שלנו
-                    for (int oppQuadrant = 0; oppQuadrant < 4; oppQuadrant++) {
-                        for (int oppDirection = 0; oppDirection < 2; oppDirection++) {
-                            boolean oppClockwise = (oppDirection == 1);
-
-                            BitBoardRepresentation oppBoard = cloneBoard(tempBoard);
-                            oppBoard.rotateQuadrant(oppQuadrant, oppClockwise);
-
-                            if (oppBoard.hasWinningLine(opponentNumber)) {
-                                opponentCanWinAfterOurRotation = true;
-                                break;
-                            }
+                    // בדוק אם זה סיבוב מסוכן
+                    for (int[] dangerous : dangerousRotations) {
+                        if (dangerous[0] == quadrant && dangerous[1] == direction) {
+                            isInDangerList = true;
+                            break;
                         }
-                        if (opponentCanWinAfterOurRotation) break;
                     }
 
-                    // אם הסיבוב שלנו מונע ניצחון של היריב
-                    if (!opponentCanWinAfterOurRotation) {
+                    // אם זה לא סיבוב מסוכן, השתמש בו
+                    if (!isInDangerList) {
                         return new int[]{quadrant, direction};
                     }
                 }
             }
         }
 
-        // בדיקת מצב בו היריב יש לו 4 ברצף
+        // בדיקת איומים של 4 כלים
         for (PatternThreat threat : currentThreats) {
             if (threat.player == opponentNumber && threat.count >= 4) {
-                // חייב למצוא סיבוב שיהרוס את הרצף
+                // חיפוש סיבוב שמשבש את האיום
                 for (int quadrant = 0; quadrant < 4; quadrant++) {
                     for (int direction = 0; direction < 2; direction++) {
                         boolean clockwise = (direction == 1);
@@ -1171,18 +1722,39 @@ public class PentagoAI {
                         BitBoardRepresentation tempBoard = cloneCurrentBoard();
                         tempBoard.rotateQuadrant(quadrant, clockwise);
 
-                        // בדיקה אם הסיבוב שובר את הרצף המסוכן
+                        // בדיקה אם האיום נשבש אחרי הסיבוב
                         boolean threatStillExists = false;
-                        for (PatternThreat afterThreat : findThreatsOnBoard(tempBoard)) {
-                            if (afterThreat.player == opponentNumber &&
-                                    afterThreat.count >= 4 &&
-                                    threatsAreRelated(threat, afterThreat)) {
+                        for (int[] pos : threat.positions) {
+                            // בדוק אם האיום נשבש
+                            boolean stillPartOfThreat = false;
+                            for (int[] dir : DIRECTIONS) {
+                                int count = 0;
+                                for (int i = -4; i <= 4; i++) {
+                                    int r = pos[0] + i * dir[0];
+                                    int c = pos[1] + i * dir[1];
+
+                                    if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
+                                        if (getPieceAtFromBoard(tempBoard, r, c) == opponentNumber) {
+                                            count++;
+                                            if (count >= 4) {
+                                                stillPartOfThreat = true;
+                                                break;
+                                            }
+                                        } else {
+                                            count = 0; // איפוס כשיש הפרעה
+                                        }
+                                    }
+                                }
+                                if (stillPartOfThreat) break;
+                            }
+
+                            if (stillPartOfThreat) {
                                 threatStillExists = true;
                                 break;
                             }
                         }
 
-                        if (!threatStillExists) {
+                        if (!threatStillExists && !tempBoard.hasWinningLine(opponentNumber)) {
                             return new int[]{quadrant, direction};
                         }
                     }
@@ -1191,6 +1763,60 @@ public class PentagoAI {
         }
 
         return null;
+    }
+
+    // פונקציה עזר למציאת רצפים ארוכים - שילוב עם הקוד הקיים
+    private boolean hasLongLine(BitBoardRepresentation board, int player, int length) {
+        // בדיקת כל הכיוונים האפשריים
+        for (int[] dir : DIRECTIONS) {
+            int rowDelta = dir[0];
+            int colDelta = dir[1];
+
+            // בדוק כל מיקום התחלתי אפשרי
+            for (int row = 0; row < BOARD_SIZE; row++) {
+                for (int col = 0; col < BOARD_SIZE; col++) {
+                    int count = 0;
+                    boolean isValid = true;
+
+                    for (int i = 0; i < length && isValid; i++) {
+                        int r = row + i * rowDelta;
+                        int c = col + i * colDelta;
+
+                        if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) {
+                            isValid = false;
+                        } else if (getPieceAtFromBoard(board, r, c) == player) {
+                            count++;
+                        } else {
+                            isValid = false;
+                        }
+                    }
+
+                    if (count == length) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // בדיקה אם שתי רשימות מיקומים חופפות (יש לפחות 3 מיקומים משותפים)
+    private boolean hasSamePositions(List<int[]> positions1, List<int[]> positions2) {
+        int commonPositions = 0;
+
+        for (int[] pos1 : positions1) {
+            for (int[] pos2 : positions2) {
+                if (pos1[0] == pos2[0] && pos1[1] == pos2[1]) {
+                    commonPositions++;
+                    if (commonPositions >= 3) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
