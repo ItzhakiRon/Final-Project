@@ -12,15 +12,6 @@ public class PentagoModel extends Observable {
     // מצב המשחק (בתהליך, ניצחון, תיקו)
     private GameState gameState;
 
-    // מיקום המהלך האחרון
-    private int lastMove;
-
-    // רביע אחרון שסובב
-    private int lastRotatedQuadrant;
-
-    // כיוון סיבוב אחרון
-    private boolean lastRotationClockwise;
-
     public enum GameState {
         IN_PROGRESS, WHITE_WINS, BLACK_WINS, DRAW
     }
@@ -42,7 +33,6 @@ public class PentagoModel extends Observable {
 
         // הנחת כלי במיקום המבוקש
         board.placePiece(position, currentPlayer);
-        lastMove = position;
 
         setChanged();
         notifyObservers("PIECE_PLACED");
@@ -53,8 +43,6 @@ public class PentagoModel extends Observable {
     // סיבוב רביע
     public void rotateQuadrant(int quadrant, boolean clockwise) {
         board.rotateQuadrant(quadrant, clockwise);
-        lastRotatedQuadrant = quadrant;
-        lastRotationClockwise = clockwise;
 
         // בדיקת ניצחון
         checkGameState();
@@ -91,7 +79,6 @@ public class PentagoModel extends Observable {
     public GameState getGameState() {
         return gameState;
     }
-
 
     // לאפס את המשחק
     public void resetGame() {

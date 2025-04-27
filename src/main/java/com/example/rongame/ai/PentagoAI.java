@@ -302,7 +302,7 @@ public class PentagoAI {
         // 1. בדיקה אם אנחנו יכולים לנצח במהלך אחד
         List<int[]> availableMoves = getAvailableMoves();
         for (int[] move : availableMoves) {
-            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
             tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], playerNumber);
 
             if (tempBoard.hasWinningLine(playerNumber)) {
@@ -312,7 +312,7 @@ public class PentagoAI {
 
         // 2. בדיקה אם היריב יכול לנצח במהלך הבא
         for (int[] move : availableMoves) {
-            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
             tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
 
             if (tempBoard.hasWinningLine(opponentNumber)) {
@@ -389,7 +389,7 @@ public class PentagoAI {
         int[] winningRotation = findWinningRotation();
         if (winningRotation != null) {
             // בדיקה שהסיבוב לא יוצר רצף מנצח ליריב
-            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
             tempBoard.rotateQuadrant(winningRotation[0], winningRotation[1] == 1);
 
             if (!tempBoard.hasWinningLine(opponentNumber)) {
@@ -412,7 +412,7 @@ public class PentagoAI {
 
         // אם יש לפחות משבצת אחת פנויה, בדוק אם היריב יכול לנצח
         if (!availableMoves.isEmpty()) {
-            BitBoardRepresentation noRotationBoard = cloneCurrentBoard();
+            BitBoardRepresentation noRotationBoard = cloneBoard(model.getBoard());
 
             // בדיקת כל המהלכים האפשריים של היריב
             for (int[] move : availableMoves) {
@@ -426,7 +426,7 @@ public class PentagoAI {
                         for (int direction = 0; direction < 2; direction++) {
                             boolean clockwise = (direction == 1);
 
-                            BitBoardRepresentation rotatedBoard = cloneCurrentBoard();
+                            BitBoardRepresentation rotatedBoard = cloneBoard(model.getBoard());
                             rotatedBoard.rotateQuadrant(quadrant, clockwise);
 
                             boolean opponentCanStillWin = false;
@@ -479,14 +479,6 @@ public class PentagoAI {
     public void setPlayerNumber(int playerNumber) {
         this.playerNumber = playerNumber;
         this.opponentNumber = 1 - playerNumber;
-    }
-
-    /**
-     * איפוס מונה טורנים (למשחק חדש)
-     */
-    public void resetTurnCount() {
-        this.turnCount = 0;
-        this.currentThreats.clear();
     }
 
     /**
@@ -560,7 +552,7 @@ public class PentagoAI {
                 AIState.CONTROL_CENTER : AIState.CONTROL_CORNERS;
     }
 
-    // פונקציה חדשה לבדיקת רצפים מסוכנים במיוחד
+    // פונקציה לבדיקת רצפים מסוכנים במיוחד
     private boolean checkForCriticalThreats() {
         // בדיקה אם יש רצפים מסוכנים של היריב
         for (PatternThreat threat : currentThreats) {
@@ -581,7 +573,7 @@ public class PentagoAI {
         // בדיקת סימולציה - אם יש מהלך של היריב שיוצר רצף מסוכן
         List<int[]> availableMoves = getAvailableMoves();
         for (int[] move : availableMoves) {
-            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
             tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
 
             List<PatternThreat> simulatedThreats = findThreatsOnBoard(tempBoard);
@@ -616,7 +608,7 @@ public class PentagoAI {
         // בדיקה ישירה - האם מהלך אחד יכול להוביל לניצחון
         List<int[]> availableMoves = getAvailableMoves();
         for (int[] move : availableMoves) {
-            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
             tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], player);
 
             if (tempBoard.hasWinningLine(player)) {
@@ -698,18 +690,6 @@ public class PentagoAI {
         return false;
     }
 
-    /**
-     * בדיקה אם יש דפוסים פתוחים שאפשר להרחיב
-     */
-    private boolean hasOpenPatterns() {
-        for (PatternThreat threat : currentThreats) {
-            if (threat.player == playerNumber && threat.count >= 2 && !threat.openEnds.isEmpty()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     // ========================
     // 7. ניתוח לוח וזיהוי איומים
     // ========================
@@ -764,7 +744,7 @@ public class PentagoAI {
             int rowDelta, int colDelta,
             int direction) {
 
-        // שיטה משופרת לבדיקת רצפים - נבדוק חלון נע בגודל להכיל עד 7 משבצות (WIN_LENGTH + 2)
+        // שיטה לבדיקת רצפים - נבדוק חלון נע בגודל להכיל עד 7 משבצות (WIN_LENGTH + 2)
 
         // ראשית - בדיקה לאורך הקו הרגיל (5 משבצות)
         int[] counts = {0, 0}; // ספירת כלים לכל שחקן
@@ -776,7 +756,7 @@ public class PentagoAI {
             int col = startCol + i * colDelta;
 
             if (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE) {
-                int piece = getPieceAtFromBoard(board, row, col);
+                int piece = getPieceAt(board, row, col);
 
                 if (piece == 0 || piece == 1) {
                     counts[piece]++;
@@ -793,7 +773,7 @@ public class PentagoAI {
         boolean hasOpenStart = false;
 
         if (prevRow >= 0 && prevRow < BOARD_SIZE && prevCol >= 0 && prevCol < BOARD_SIZE) {
-            if (getPieceAtFromBoard(board, prevRow, prevCol) == -1) {
+            if (getPieceAt(board, prevRow, prevCol) == -1) {
                 hasOpenStart = true;
                 emptyPositions.add(new int[]{prevRow, prevCol});
             }
@@ -804,7 +784,7 @@ public class PentagoAI {
         boolean hasOpenEnd = false;
 
         if (nextRow >= 0 && nextRow < BOARD_SIZE && nextCol >= 0 && nextCol < BOARD_SIZE) {
-            if (getPieceAtFromBoard(board, nextRow, nextCol) == -1) {
+            if (getPieceAt(board, nextRow, nextCol) == -1) {
                 hasOpenEnd = true;
                 emptyPositions.add(new int[]{nextRow, nextCol});
             }
@@ -817,7 +797,7 @@ public class PentagoAI {
                 threat.direction = direction;
 
                 for (int[] pos : positions) {
-                    if (getPieceAtFromBoard(board, pos[0], pos[1]) == player) {
+                    if (getPieceAt(board, pos[0], pos[1]) == player) {
                         threat.positions.add(pos);
                     }
                 }
@@ -891,7 +871,7 @@ public class PentagoAI {
                 int r = windowStartRow + i * rowDelta;
                 int c = windowStartCol + i * colDelta;
 
-                int piece = getPieceAtFromBoard(board, r, c);
+                int piece = getPieceAt(board, r, c);
                 if (piece == 0 || piece == 1) {
                     extCounts[piece]++;
                     extPositions.add(new int[]{r, c});
@@ -907,7 +887,7 @@ public class PentagoAI {
                     extThreat.direction = direction;
 
                     for (int[] pos : extPositions) {
-                        if (getPieceAtFromBoard(board, pos[0], pos[1]) == player) {
+                        if (getPieceAt(board, pos[0], pos[1]) == player) {
                             extThreat.positions.add(pos);
                         }
                     }
@@ -1058,7 +1038,7 @@ public class PentagoAI {
             if (threat.player == playerNumber && threat.count >= 3 && threat.openEnds.size() >= 2) {
                 for (int[] pos : threat.openEnds) {
                     // ניסיון לראות אם המהלך יוצר רצף מנצח
-                    BitBoardRepresentation tempBoard = cloneCurrentBoard();
+                    BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
                     tempBoard.placePiece(pos[0] * BOARD_SIZE + pos[1], playerNumber);
 
                     boolean createsWin = tempBoard.hasWinningLine(playerNumber);
@@ -1133,7 +1113,7 @@ public class PentagoAI {
      * חישוב פוטנציאל ליצירת fork (מספר דרכים לניצחון)
      */
     private int calculateForkPotential(int row, int col, int player) {
-        BitBoardRepresentation tempBoard = cloneCurrentBoard();
+        BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
         tempBoard.placePiece(row * BOARD_SIZE + col, player);
 
         int forkCount = 0;
@@ -1157,7 +1137,7 @@ public class PentagoAI {
                         break;
                     }
 
-                    int piece = getPieceAtFromBoard(tempBoard, r, c);
+                    int piece = getPieceAt(tempBoard, r, c);
                     if (piece == player) {
                         count++;
                     } else if (piece == -1) {
@@ -1186,7 +1166,7 @@ public class PentagoAI {
         // 1. בדיקה אם היריב יכול לנצח במהלך הבא
         List<int[]> availableMoves = getAvailableMoves();
         for (int[] move : availableMoves) {
-            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
             tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
 
             if (tempBoard.hasWinningLine(opponentNumber)) {
@@ -1221,7 +1201,7 @@ public class PentagoAI {
                     int blockScore = baseThreatScore;
 
                     // בדיקה אם החסימה הזו מונעת איומים נוספים
-                    BitBoardRepresentation afterBlockBoard = cloneCurrentBoard();
+                    BitBoardRepresentation afterBlockBoard = cloneBoard(model.getBoard());
                     afterBlockBoard.placePiece(blockPos[0] * BOARD_SIZE + blockPos[1], playerNumber);
 
                     // בדיקה אם עדיין יש איומים לאחר החסימה
@@ -1270,7 +1250,7 @@ public class PentagoAI {
 
         // 4. בדיקת סימולציה - מה קורה אם היריב ישים כלי במקומות שונים
         for (int[] move : availableMoves) {
-            BitBoardRepresentation tempBoard = cloneCurrentBoard();
+            BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
             tempBoard.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
 
             List<PatternThreat> simulatedThreats = findThreatsOnBoard(tempBoard);
@@ -1624,11 +1604,11 @@ public class PentagoAI {
     }
 
     // ========================
-    // 9. אסטרטגיות לסיבוב - משופר
+    // 9. אסטרטגיות לסיבוב
     // ========================
 
     /**
-     * מציאת סיבוב שיוביל לניצחון - משופר
+     * מציאת סיבוב שיוביל לניצחון
      */
     private int[] findWinningRotation() {
         // בדיקת כל הסיבובים האפשריים
@@ -1637,7 +1617,7 @@ public class PentagoAI {
                 boolean clockwise = (direction == 1);
 
                 // יצירת לוח זמני לבדיקת הסיבוב
-                BitBoardRepresentation tempBoard = cloneCurrentBoard();
+                BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
                 tempBoard.rotateQuadrant(quadrant, clockwise);
 
                 // בדיקה אם הסיבוב מוביל לניצחון מיידי
@@ -1652,7 +1632,7 @@ public class PentagoAI {
             for (int direction = 0; direction < 2; direction++) {
                 boolean clockwise = (direction == 1);
 
-                BitBoardRepresentation tempBoard = cloneCurrentBoard();
+                BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
                 tempBoard.rotateQuadrant(quadrant, clockwise);
 
                 List<PatternThreat> threats = findThreatsOnBoard(tempBoard);
@@ -1669,7 +1649,7 @@ public class PentagoAI {
     }
 
     /**
-     * מציאת סיבוב שיחסום ניצחון של היריב - משופר
+     * מציאת סיבוב שיחסום ניצחון של היריב
      */
     private int[] findBlockingRotation() {
         // בדוק אם סיבובים מסויימים יגרמו ליריב לנצח
@@ -1679,7 +1659,7 @@ public class PentagoAI {
             for (int direction = 0; direction < 2; direction++) {
                 boolean clockwise = (direction == 1);
 
-                BitBoardRepresentation tempBoard = cloneCurrentBoard();
+                BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
                 tempBoard.rotateQuadrant(quadrant, clockwise);
 
                 if (tempBoard.hasWinningLine(opponentNumber)) {
@@ -1719,7 +1699,7 @@ public class PentagoAI {
                     for (int direction = 0; direction < 2; direction++) {
                         boolean clockwise = (direction == 1);
 
-                        BitBoardRepresentation tempBoard = cloneCurrentBoard();
+                        BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
                         tempBoard.rotateQuadrant(quadrant, clockwise);
 
                         // בדיקה אם האיום נשבש אחרי הסיבוב
@@ -1734,7 +1714,7 @@ public class PentagoAI {
                                     int c = pos[1] + i * dir[1];
 
                                     if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
-                                        if (getPieceAtFromBoard(tempBoard, r, c) == opponentNumber) {
+                                        if (getPieceAt(tempBoard, r, c) == opponentNumber) {
                                             count++;
                                             if (count >= 4) {
                                                 stillPartOfThreat = true;
@@ -1765,81 +1745,8 @@ public class PentagoAI {
         return null;
     }
 
-    // פונקציה עזר למציאת רצפים ארוכים - שילוב עם הקוד הקיים
-    private boolean hasLongLine(BitBoardRepresentation board, int player, int length) {
-        // בדיקת כל הכיוונים האפשריים
-        for (int[] dir : DIRECTIONS) {
-            int rowDelta = dir[0];
-            int colDelta = dir[1];
-
-            // בדוק כל מיקום התחלתי אפשרי
-            for (int row = 0; row < BOARD_SIZE; row++) {
-                for (int col = 0; col < BOARD_SIZE; col++) {
-                    int count = 0;
-                    boolean isValid = true;
-
-                    for (int i = 0; i < length && isValid; i++) {
-                        int r = row + i * rowDelta;
-                        int c = col + i * colDelta;
-
-                        if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) {
-                            isValid = false;
-                        } else if (getPieceAtFromBoard(board, r, c) == player) {
-                            count++;
-                        } else {
-                            isValid = false;
-                        }
-                    }
-
-                    if (count == length) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
-    // בדיקה אם שתי רשימות מיקומים חופפות (יש לפחות 3 מיקומים משותפים)
-    private boolean hasSamePositions(List<int[]> positions1, List<int[]> positions2) {
-        int commonPositions = 0;
-
-        for (int[] pos1 : positions1) {
-            for (int[] pos2 : positions2) {
-                if (pos1[0] == pos2[0] && pos1[1] == pos2[1]) {
-                    commonPositions++;
-                    if (commonPositions >= 3) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
     /**
-     * בדיקה אם שני איומים קשורים (מדובר באותו רצף)
-     */
-    private boolean threatsAreRelated(PatternThreat threat1, PatternThreat threat2) {
-        // בדיקה אם יש לפחות 2 כלים משותפים לשני האיומים
-        int commonPositions = 0;
-        for (int[] pos1 : threat1.positions) {
-            for (int[] pos2 : threat2.positions) {
-                if (pos1[0] == pos2[0] && pos1[1] == pos2[1]) {
-                    commonPositions++;
-                    if (commonPositions >= 2) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * מציאת סיבוב אסטרטגי אופטימלי - משופר
+     * מציאת סיבוב אסטרטגי אופטימלי
      */
     private int[] findStrategicRotation() {
         int bestScore = Integer.MIN_VALUE;
@@ -1850,7 +1757,7 @@ public class PentagoAI {
                 boolean clockwise = (direction == 1);
 
                 // יצירת לוח זמני לבדיקת הסיבוב
-                BitBoardRepresentation tempBoard = cloneCurrentBoard();
+                BitBoardRepresentation tempBoard = cloneBoard(model.getBoard());
                 tempBoard.rotateQuadrant(quadrant, clockwise);
 
                 // הערכת מצב הלוח לאחר הסיבוב
@@ -1872,7 +1779,7 @@ public class PentagoAI {
     }
 
     /**
-     * הערכת מצב הלוח לאחר סיבוב - משופר
+     * הערכת מצב הלוח לאחר סיבוב
      */
     private int evaluateBoardAfterRotation(BitBoardRepresentation board, int quadrant, boolean clockwise) {
         int score = 0;
@@ -2000,7 +1907,7 @@ public class PentagoAI {
             int posQuadrant = getQuadrantForPosition(pos[0], pos[1]);
 
             if (posQuadrant == quadrant) {
-                int piece = getPieceAtFromBoard(board, pos[0], pos[1]);
+                int piece = getPieceAt(board, pos[0], pos[1]);
 
                 if (piece == playerNumber) {
                     // בונוס אם הכלי שלנו הגיע לאזור חשוב
@@ -2033,7 +1940,7 @@ public class PentagoAI {
         int emptySpaces = 0;
 
         for (int[] pos : pattern) {
-            int piece = getPieceAtFromBoard(board, pos[0], pos[1]);
+            int piece = getPieceAt(board, pos[0], pos[1]);
             if (piece == playerNumber) {
                 playerPieces++;
             } else if (piece == opponentNumber) {
@@ -2062,8 +1969,12 @@ public class PentagoAI {
         return score;
     }
 
+    // ========================
+    // 10. פונקציות עזר
+    // ========================
+
     /**
-     * שכפול לוח (מספק גמישות יותר מהפונקציה הקיימת)
+     * שכפול לוח
      */
     private BitBoardRepresentation cloneBoard(BitBoardRepresentation original) {
         BitBoardRepresentation clone = new BitBoardRepresentation();
@@ -2079,10 +1990,6 @@ public class PentagoAI {
 
         return clone;
     }
-
-    // ========================
-    // 10. פונקציות עזר
-    // ========================
 
     /**
      * הוספת אקראיות קלה למהלכים דומים
@@ -2143,13 +2050,6 @@ public class PentagoAI {
     }
 
     /**
-     * בדיקה אם קיים רצף מנצח על לוח
-     */
-    private boolean checkWinningLine(BitBoardRepresentation board, int player) {
-        return board.hasWinningLine(player);
-    }
-
-    /**
      * ספירת כלים בסמיכות לנקודה
      */
     private int countAdjacentPieces(int row, int col, int player) {
@@ -2184,7 +2084,7 @@ public class PentagoAI {
 
         for (int r = 0; r < QUADRANT_SIZE; r++) {
             for (int c = 0; c < QUADRANT_SIZE; c++) {
-                if (getPieceAtFromBoard(board, startRow + r, startCol + c) != -1) {
+                if (getPieceAt(board, startRow + r, startCol + c) != -1) {
                     count++;
                 }
             }
@@ -2203,28 +2103,8 @@ public class PentagoAI {
     /**
      * קבלת כלי במיקום מסוים בלוח זמני
      */
-    private int getPieceAtFromBoard(BitBoardRepresentation board, int row, int col) {
+    private int getPieceAt(BitBoardRepresentation board, int row, int col) {
         return board.getPieceAt(row, col);
-    }
-
-    /**
-     * יצירת עותק של הלוח הנוכחי
-     */
-    private BitBoardRepresentation cloneCurrentBoard() {
-        BitBoardRepresentation original = model.getBoard();
-        BitBoardRepresentation clone = new BitBoardRepresentation();
-
-        // העתקת מצב הלוח
-        for (int i = 0; i < BOARD_SIZE; i++) {
-            for (int j = 0; j < BOARD_SIZE; j++) {
-                int piece = original.getPieceAt(i, j);
-                if (piece != -1) {
-                    clone.placePiece(i * BOARD_SIZE + j, piece);
-                }
-            }
-        }
-
-        return clone;
     }
 
     /**
