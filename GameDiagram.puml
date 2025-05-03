@@ -121,58 +121,88 @@ interface com.example.rongame.view.MainMenuView$GameModeListener {
 }
 
 class com.example.rongame.ai.PentagoAI {
+- {static} int WIN_LENGTH
+- {static} int BOARD_SIZE
+- {static} int QUADRANT_SIZE
+- {static} int LINE_4_SCORE
+- {static} int LINE_3_SCORE
+- {static} int LINE_2_SCORE
+- {static} int BLOCK_SCORE
+- {static} int CENTER_SCORE
+- {static} int CORNER_SCORE
+- {static} int EDGE_SCORE
+- {static} int[][] DIRECTIONS
+- {static} int[][] CENTER_POSITIONS
+- {static} int[][] CORNER_POSITIONS
+- {static} int[][] NEAR_CORNER_POSITIONS
+- {static} int[][] CENTER_SQUARES
+- {static} int[][] IMPORTANT_AREAS
 - PentagoModel model
 - AIState currentState
 - int playerNumber
+- int opponentNumber
 - Random random
 - int turnCount
 - int[][] positionWeights
 - Map<String,List<int[]>> strategicPatterns
+- List<PatternThreat> currentThreats
 - void initializePositionWeights()
 - void initializeStrategicPatterns()
+- List<int[]> createPositionList(int[][])
 + int[] makeMove()
+- int[] findCriticalMove()
+- int[] validateMove(int[])
 + int[] makeRotation()
+- int[] findEmergencyRotation()
+- List<int[]> getAvailableMoves(BitBoardRepresentation)
 + void setPlayerNumber(int)
-+ void resetTurnCount()
 + void setModel(PentagoModel)
 - void determineState()
-- boolean shouldUseLookAhead()
-- boolean hasCentralPositionsAvailable()
-- boolean hasCornersThreat()
-- boolean hasAdvancedPatternOpportunity()
-- boolean shouldControlEdges()
+- boolean checkForCriticalThreats()
+- boolean hasOpenEndedSequence(int,int)
 - boolean hasWinningMove(int)
-- int[] calculateBestMoveWithLookAhead()
-- int evaluateMoveScore(int,int)
-- boolean isPartOfStrategicPattern(int,int)
-- int countWinningRotations(PentagoModel)
+- boolean isCenterAvailable()
+- boolean hasPatternOpportunity()
+- boolean hasOffensiveOpportunity()
+- void updateThreats()
+- List<PatternThreat> findThreatsOnBoard(BitBoardRepresentation)
+- void checkLineForThreats(List<PatternThreat>,BitBoardRepresentation,int,int,int,int,int)
+- boolean hasSignificantOverlap(List<int[]>,List<int[]>)
+- void calculateThreatScore(PatternThreat)
+- boolean isPatternNearCenter(List<int[]>)
 - int[] getOffensiveMove()
+- int evaluateOffensivePosition(int,int)
+- int calculateForkPotential(int,int,int)
 - int[] getDefensiveMove()
+- boolean hasSimilarDirection(PatternThreat,PatternThreat)
+- int evaluateDefensivePosition(int,int)
+- int[] getHybridMove()
+- int[] getCenterControlMove()
+- int[] getCornerControlMove()
+- int evaluateCornerPosition(int,int)
+- int[] getPatternBuildingMove()
+- int evaluatePattern(List<int[]>)
+- int[] countPiecesInPattern(List<int[]>)
 - int[] getStrategicMove()
-- int[] getEdgeControlMove()
-- int[] getCornerBlockMove()
-- int[] getAdvancedPatternMove()
-- String selectBestPattern()
-- int[] getPatternMove()
-- int[] getRotationControlMove()
-- int[] getRandomMove()
-- int[] findOffensiveRotation()
-- int[] findDefensiveRotation()
-- int[] findAdvancedStrategicRotation()
-- int evaluateAdvancedRotationScore(BitBoardRepresentation,int,boolean)
-- int evaluatePatternAfterRotation(BitBoardRepresentation,List<int[]>)
-- int evaluateStrategicPositionsAfterRotation(BitBoardRepresentation)
-- int[] findSmartRandomRotation()
-- List<int[]> findPotentialLinesWith(int,int)
-- void checkPotentialLine(List<int[]>,int,int,int,int,int,int)
-- int countThreats(BitBoardRepresentation,int)
-- int countThreatsInLine(BitBoardRepresentation,int,int,int,int,int)
+- int evaluatePositionInPatterns(int,int)
+- int[] findWinningRotation()
+- int[] findBlockingRotation()
+- int[] findStrategicRotation()
+- int evaluateBoardAfterRotation(BitBoardRepresentation,int,boolean)
+- boolean opponentHasCenterAdvantage()
+- boolean isCenterDisruptedByRotation(int)
+- int evaluateImportantAreasAfterRotation(BitBoardRepresentation,int)
+- int getQuadrantForPosition(int,int)
+- int evaluatePatternOnBoard(BitBoardRepresentation,List<int[]>)
+- BitBoardRepresentation cloneBoard(BitBoardRepresentation)
+- void addRandomnessToPotentialMoves(List<MoveEvaluation>)
+- void sortMoveEvaluations(List<MoveEvaluation>)
+- void sortPositionsByWeight(List<int[]>)
+- int countAdjacentPieces(int,int,int)
 - int countPiecesInQuadrant(BitBoardRepresentation,int)
-- int countPlayerPiecesInQuadrant(BitBoardRepresentation,int,int)
-- List<int[]> getAllPossibleMoves()
-- PentagoModel createTempModel()
-- PentagoModel createTempModelFrom(PentagoModel)
 - int getPieceAt(int,int)
+- int getPieceAt(BitBoardRepresentation,int,int)
+- List<int[]> getAvailableMoves()
 }
 
 
@@ -180,12 +210,25 @@ enum com.example.rongame.ai.AIState {
 +  OFFENSE
 +  DEFENSE
 +  CONTROL_CENTER
-+  CONTROL_EDGES
-+  BLOCK_CORNERS
++  CONTROL_CORNERS
 +  BUILD_PATTERN
-+  CONTROL_ROTATION
-+  LOOK_AHEAD
 }
+
+class com.example.rongame.ai.PentagoAI$PatternThreat {
+~ int player
+~ int count
+~ List<int[]> positions
+~ List<int[]> openEnds
+~ int direction
+~ int score
+}
+
+class com.example.rongame.ai.PentagoAI$MoveEvaluation {
+~ int[] move
+~ int score
++ int compareTo(MoveEvaluation)
+}
+
 
 class com.example.rongame.view.BoardView {
 - GridPane boardGrid
@@ -235,9 +278,6 @@ class com.example.rongame.model.PentagoModel {
 - BitBoardRepresentation board
 - int currentPlayer
 - GameState gameState
-- int lastMove
-- int lastRotatedQuadrant
-- boolean lastRotationClockwise
 + boolean makeMove(int,int)
 + void rotateQuadrant(int,boolean)
 - void checkGameState()
@@ -263,6 +303,9 @@ javafx.scene.layout.BorderPane <|-- com.example.rongame.view.PentagoView
 javafx.application.Application <|-- com.example.rongame.PentagoApp
 javafx.scene.layout.BorderPane <|-- com.example.rongame.view.MainMenuView
 com.example.rongame.view.MainMenuView +.. com.example.rongame.view.MainMenuView$GameModeListener
+com.example.rongame.ai.PentagoAI +.. com.example.rongame.ai.PentagoAI$PatternThreat
+com.example.rongame.ai.PentagoAI +.. com.example.rongame.ai.PentagoAI$MoveEvaluation
+com.example.rongame.ai.Comparable <|.. com.example.rongame.ai.PentagoAI$MoveEvaluation
 javafx.scene.layout.StackPane <|-- com.example.rongame.view.BoardView
 com.example.rongame.view.BoardView +.. com.example.rongame.view.BoardView$CellClickListener
 com.example.rongame.view.BoardView +.. com.example.rongame.view.BoardView$QuadrantRotationListener

@@ -263,7 +263,7 @@ public class PentagoAI {
 
         int[] move;
 
-        // בדיקה חדשה: תמיד בדוק קודם אם יש מהלך קריטי להגנה או התקפה
+        //  תמיד בדוק קודם אם יש מהלך קריטי להגנה או התקפה
         int[] criticalMove = findCriticalMove();
         if (criticalMove != null) {
             return criticalMove;
@@ -379,7 +379,7 @@ public class PentagoAI {
     public int[] makeRotation() {
         updateThreats();
 
-        // בדיקה חדשה - האם יש סיבוב שיכול למנוע מהיריב לנצח במהלך הבא
+        //  האם יש סיבוב שיכול למנוע מהיריב לנצח במהלך הבא
         int[] emergencyRotation = findEmergencyRotation();
         if (emergencyRotation != null) {
             return emergencyRotation;
@@ -420,7 +420,7 @@ public class PentagoAI {
                 afterOpponentMove.placePiece(move[0] * BOARD_SIZE + move[1], opponentNumber);
 
                 if (afterOpponentMove.hasWinningLine(opponentNumber)) {
-                    // היריב יכול לנצח במהלך הבא! יש לחפש סיבוב שימנע זאת
+                    // היריב יכול לנצח במהלך הבא יש לחפש סיבוב שימנע זאת
 
                     for (int quadrant = 0; quadrant < 4; quadrant++) {
                         for (int direction = 0; direction < 2; direction++) {
@@ -516,7 +516,7 @@ public class PentagoAI {
             return;
         }
 
-        // עדיפות חדשה 3: חסימת רצפים מסוכנים של 3+ כלים פתוחים משני הצדדים
+        // עדיפות 3: חסימת רצפים מסוכנים של 3+ כלים פתוחים משני הצדדים
         if (hasOpenEndedSequence(opponentNumber, 3)) {
             currentState = AIState.DEFENSE;
             return;
@@ -2067,25 +2067,6 @@ public class PentagoAI {
                     if (getPieceAt(r, c) == player) {
                         count++;
                     }
-                }
-            }
-        }
-
-        return count;
-    }
-
-    /**
-     * ספירת כלים ברביע
-     */
-    private int countPiecesInQuadrant(BitBoardRepresentation board, int quadrant) {
-        int startRow = (quadrant / 2) * QUADRANT_SIZE;
-        int startCol = (quadrant % 2) * QUADRANT_SIZE;
-        int count = 0;
-
-        for (int r = 0; r < QUADRANT_SIZE; r++) {
-            for (int c = 0; c < QUADRANT_SIZE; c++) {
-                if (getPieceAt(board, startRow + r, startCol + c) != -1) {
-                    count++;
                 }
             }
         }
